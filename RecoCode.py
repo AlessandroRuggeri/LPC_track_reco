@@ -15,25 +15,33 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import plot3d
 import pickle
 #%%Opening of the pickled file
 dictionary=pickle.load(open("Pickles/3dreco0.pkl","rb"))
 #We separate the UUID run key from the voxel dictionary
 key_name, dictionary = next(iter(dictionary.items()))
 #take one of the events (this will have to remain )
-event= dictionary[6]['amplitude']
+event= dictionary[2]['amplitude']
 #convert the event dic. to numpy array
 array=np.array(event)
 #setting the threshold for drawing
-cut=int(0.7*np.max(array))
+cut=int(0.6*np.max(array))
+#Plot the voxel array with a threshold
 cmap = matplotlib.cm.get_cmap("viridis").copy()
 cmap.set_under('none')
 #plot a basic discrete heatmap of the data
-#define the discrete coordinates
-X, Y, Z = np.mgrid[:30, :30, :136]
+#define cocrdinate arrays
+x= np.arange(0.,array.shape[0],1)
+y=np.arange(0.,array.shape[1],1)
+z=np.arange(0.,array.shape[2],1)
+#plotting the cut data
+cut_array=array[array>=cut]
+x_cut=np.nonzero(array>=cut)[0]
+y_cut=np.nonzero(array>=cut)[1]
+z_cut=np.nonzero(array>=cut)[2]
+# X,Y,Z=np.meshgrid(x_cut,y_cut,z_cut)
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-img=ax.scatter(X+0.5, Y+0.5, Z+0.5, c=array.ravel(),s=1.5,vmin=cut)
-plt.colorbar(img)
+img=ax.scatter(x_cut, y_cut, z_cut, c=cut_array.ravel(),s=2,marker='s')
+plt.colorbar(img,fraction=0.025, pad=0.06)
 plt.show()
