@@ -21,16 +21,31 @@ import matplotlib.pyplot as plt
 #%%Functions for frequently used operations
 #computing the local mean
 #Currently the hits are chosen for the computation based on the X index!!!
-def loc_mean(u,N):
-#finding the closest N points to u
-    closest = N_closest(u,N)
+def loc_mean(u,closest,weight):
 #compute the average
-    m=np.average(closest,axis=0,weights=(weight(u,closest))[:N])
+    m=np.average(closest,axis=0,weights=weight)
     return m
 
+#Computing the local covariant matrix
+def loc_cov(m,closest,weight):
+#compute the point-m differences
+    closest=closest-m
+#define the covariance matrix array
+    sigma = np.zeros_like(np.outer(closest[0],closest[0]),dtype=float)
+#iterate to get the sum at the numerator
+    for i in range(closest.shape[0]):
+        sigma+=np.outer(closest[i],closest[i])*weight[i]
+#divide by the sum of the weights
+    sigma = sigma/np.sum(weight)
+    return sigma
+
+#Computing the mean shift (see if it can be incorporated in another function)
+def mean_shift(u,closest,weight):
+    return loc_mean(u,closest,weight)-u
 #computing the weight vector
 #We take the starting point and the N closest for which to compute the weights
 def weight(u,hits):
+    #bandwidth parameter to be chosen by input
     h=0.05
     w = np.zeros(hits.shape[0])
     for i in range(hits.shape[0]):
@@ -52,6 +67,21 @@ def N_closest(u,N):
     return np.take(X,dist,axis=0)
 #Plotting of the hits
 
+#Perform the LPC cycle
+def lpc_cycle(u,N):
+#for each starting point u
+    #finding the closest N points to u
+    closest = N_closest(u,N)
+    #computing the weight vector
+    w=weight(u,closest)
+    m=loc_mean(u,closest,w)
+    sigma = loc_cov(m,closest,w)
+    print("{0} ==> {1}".format(u,m))
+    
+    
+    
+    
+    
 def plot_heatmap():
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -81,8 +111,7 @@ if  __name__ == "__main__":
 #rescaling the amplitudes
     diff=np.max(array)-np.min(array)
     array = array/diff
-#%%Plotting of the hits
-#setting the threshold for drawing
+#setting the amplitude threshold to be considered
     cut=0.9*np.max(array)
 #performing the cut over the amplitude
     cut_array=array[array>=cut]
@@ -107,9 +136,7 @@ if  __name__ == "__main__":
 #placeholder loc_mean computation
 #the starting point is chosen at random among the points above cut
     start=X[random.randint(0,X.shape[0]-1)]
-    m=loc_mean(start,20)
-    print("{0} ==> {1}".format(start,m))
-    N_closest(m,20)
+    lpc_cycle(start,20)
     
     
     
