@@ -18,19 +18,34 @@ import random
 #from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 #%%Functions for frequently used operations
+
+#computing the weight vector
+#We take the starting point and the N closest for which to compute the weights
+def weight(u,hits,amplitudes,h):
+    w = np.zeros(hits.shape[0])
+    for i in range(hits.shape[0]):
+    #placeholder weight formula
+        w[i] = (amplitudes[i]/((2*mt.pi)**(3/2)*(h**3)))*mt.exp((-1/(2*h**2))*np.dot((hits[i]-u),(hits[i]-u)))
+    return w
+
 #computing the local mean
 #Currently the hits are chosen for the computation based on the X index!!!
-def loc_mean(u,closest):
+def loc_mean(u,closest,amplitudes,h):
     #find the weights
-    weights=weight(u,closest)
+    weights=weight(u,closest,amplitudes,h)
     #compute the average
-    m=np.average(closest,axis=0,weights=weights)
+    try:
+        m=np.average(closest,axis=0,weights=weights)
+    except ZeroDivisionError:
+        print("The weights:")
+        print(weights)
+        m=u
     return m
 
 #Computing the local covariant matrix
-def loc_cov(u,closest,m):
+def loc_cov(u,closest,m,amplitudes,h):
     #find the weights
-    weights=weight(u,closest)
+    weights=weight(u,closest,amplitudes,h)
     #compute the point-m differences
     closest=closest-m
     #define the covariance matrix array
@@ -42,18 +57,10 @@ def loc_cov(u,closest,m):
     sigma = sigma/np.sum(weights)
     return sigma
 
-#Computing the mean shift (see if it can be incorporated in another function)
-def mean_shift(u,closest):
-    lm=loc_mean(u,closest)-u
-    return lm
-#computing the weight vector
-#We take the starting point and the N closest for which to compute the weights
-def weight(u,hits):
-    w = np.zeros(hits.shape[0])
-    for i in range(hits.shape[0]):
-    #placeholder weight formula
-        w[i] = (1/((2*mt.pi)**(3/2)*h**3))*mt.exp((-1/(2*h**2))*np.dot((hits[i]-u),(hits[i]-u)))
-    return w
+# #Computing the mean shift (see if it can be incorporated in another function)
+# def mean_shift(u,closest):
+#     lm=loc_mean(u,closest)-u
+#     return lm
 
 #Computing the set of N closest points
 def N_closest(u,N):
@@ -66,17 +73,29 @@ def N_closest(u,N):
 #selecting the closest N (except for u itself)
     dist = dist[1:N+1]
 #slicing the X matrix over the closest indices
-    return np.take(X,dist,axis=0)
-#Plotting of the hits
+    return np.take(X,dist,axis=0), np.take(cut_array,dist,axis=0);
 
-def remove_old(points,points_old):
+
+# #alternative: get points within N voxels
+# def N_closest(u,N):
+#     dist = np.zeros(X.shape[0])
+# #computing the distance between u and each X[i]
+#     for i in range(X.shape[0]):
+#         dist[i]=np.sqrt(np.dot(X[i]-u,X[i]-u))
+# #selecting the points closer than N
+#     dist = np.where(np.logical_and(dist>0, dist<=N*dist))[0]
+#     print(dist.shape)
+# #slicing the X matrix over the closest indices
+#     return np.take(X,dist,axis=0),np.take(cut_array,dist,axis=0)
+
+
+def remove_old(points,points_old,amplitudes):
     #print("points shape: ",points.shape,", old points shape: ",points_old.shape)
-    mask=np.isin(points,points_old,invert=True)
-    points[mask]
-    return points
+    mask=(points[:,None]==points_old).all(-1).any(-1)
+    mask=np.invert(mask)
+    return points[mask], amplitudes[mask];
 
-#bandwidth parameter
-h=0.05
+
 #Perform the LPC cycle
 def lpc_cycle(m0,N):
     pathl=0.0
@@ -87,27 +106,49 @@ def lpc_cycle(m0,N):
     t=0.5
     b=0.005
     c=1
-    N_p=200
+    #bandwidth parameter
+    h=0.5
+    N_p=100
     #array in which to store the lpc points
     lpc_points=np.zeros((N_p,3))
     lpc_points[0]=m0
     count=0
     closest_old=np.zeros_like(X)
+    amplitudes_old=np.zeros_like(cut_array)
 #start the cycle
     for l in range(N_p):
-        print("Cycle {0},lpc point = {1}".format(l,lpc_points[l]))
+        print("+++++++++++++++++++++")
+        print("Cycle {0}".format(l))
+        print("LPC point = ",lpc_points[l])
+        #print("path length = ",pathl)
         count+=1
         #find the N closest points to lpc_points[l]
-        closest=N_closest(lpc_points[l],N)
-        closest=remove_old(closest,closest_old)
-        closest_old=closest
+        closest, amplitudes=N_closest(lpc_points[l],N)
+        # print("Points found = ",closest.shape[0])
+        # print("closest points: ")
+        # print(closest)
+        # print("closest amps.: ")
+        # print(amplitudes)
+        # print("------")
+        # print("old closest points: ")
+        # print(closest_old)
+        # print("old closest amps.: ")
+        # print(amplitudes_old)
+        # print("------")
+        closest, amplitudes=remove_old(closest,closest_old,amplitudes)
+        # print("New points found = ",closest.shape[0])
+        # print("points after removal: ")
+        # print(closest)
+        # print("amps. after removal: ")
+        # print(amplitudes)
         #compute the local mean
-        m=loc_mean(lpc_points[l],closest)
+        m=loc_mean(lpc_points[l],closest,amplitudes,h)
+        print("local mean = ",m)
         #compute the path length
         if l>0:
-            m_old=loc_mean(lpc_points[l-1],closest_old)
+            m_old=loc_mean(lpc_points[l-1],closest_old,amplitudes_old,h)
             pathl+=np.sqrt(np.dot(m-m_old,m-m_old))
-        sigma = loc_cov(lpc_points[l],closest,m,)
+        sigma = loc_cov(lpc_points[l],closest,m,amplitudes,h)
         val,gamma=np.linalg.eigh(sigma)
         gamma=gamma[:,val.size-1]
         gamma=gamma/np.sqrt(np.dot(gamma,gamma))
@@ -118,10 +159,18 @@ def lpc_cycle(m0,N):
         if l>0:
             a=(np.dot(gamma,gamma_old))**2
             gamma=a*gamma+(1-a)*gamma_old
+        #print("gamma = ",gamma)
         #find the next local neighborhood point
-        lpc_points[l+1]=m+f_b*t*gamma
-        #save the old closest points
+        try:
+            lpc_points[l+1]=m+f_b*t*gamma
+            #print("additional factor= ",f_b*t*gamma)
+            #print("lpc_point[l+1] = ",lpc_points[l+1])
+        except IndexError:
+            print("Could not reach convergence")
+            break;
+        #save the "old" variables
         closest_old=closest
+        amplitudes_old=amplitudes
         if l==0:
             R=1
         else:
@@ -130,7 +179,7 @@ def lpc_cycle(m0,N):
         #update the "old" variables
         gamma_old=gamma
         pathl_old=pathl
-        if R<10**(-6):
+        if R<5*10**(-4):
             if f_b ==-1:
                 print("Curve has converged: exiting")
                 break
@@ -140,11 +189,13 @@ def lpc_cycle(m0,N):
                 lpc_points[l+1]=m0
                 c=1
                 count=0
-        else:
+        elif l>0:
             if R<b:
                 c=(1-b)*c
+                h=h*c
             else:
                 c=min(1.01*c,1.0)
+                h=0.5
                 #print("Branch 3")
             if count>=(0.5*N_p):
                 if f_b==-1:
@@ -158,6 +209,8 @@ def lpc_cycle(m0,N):
                     count=0
     lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
     lpc_points=lpc_points*norm
+    #print("LPC points:")
+    #print(lpc_points)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
@@ -212,13 +265,13 @@ if  __name__ == "__main__":
 #this allows to eliminate artefacts
     array=array[:,:,7:(array.shape[2]-7)]
 #Test the algorithm with a made up track
-    np.random.seed(24)
+    np.random.seed(27)
     array[:,:,:]=0.
     for a in range(array.shape[0]):
-            y_cor=int(np.abs(np.random.normal(13.,1)))
-            z_cor=int(np.abs(np.random.normal(60.,2)))
+            # y_cor=int(np.abs(np.random.normal(13.,1)))
+            # z_cor=int(np.abs(np.random.normal(60.,2)))
             amp=np.abs(np.random.normal(1.,0.05))
-            array[a][y_cor][z_cor]=amp
+            array[a][14][77]=amp
 #define the complete coordinate arrays
     x= np.arange(0.,array.shape[0],1)
     y=np.arange(0.,array.shape[1],1)
@@ -241,24 +294,24 @@ if  __name__ == "__main__":
     x_cut=x_cut.transpose()
     y_cut=y_cut.transpose()
     z_cut=z_cut.transpose()
+    cut_array=cut_array.transpose()
 #rows for the events, columns for the coordinates
     X=np.column_stack((x_cut,y_cut,z_cut))
 #rescale the array of coordinates
     d = np.zeros([X.shape[0],X.shape[0]])
     for i in range(X.shape[0]):
-        for j in range(X.shape[0]):
-            d[i][j]=np.sqrt(np.dot(X[i],X[j]))
+        d[i]=np.sqrt(np.dot(X[i],X[i]))
     norm=(d.max()-d.min())
     X = X/norm
 #placeholder loc_mean computation
 #the starting point is chosen at random among the points above cut
+    np.random.seed(67)
     start=X[np.random.randint(0,X.shape[0]-1)]
-    #start=[0,10,70]/norm
+    #start=[10,10,70]/norm
+    print("Start = ",start)
     lpc_cycle(start,4)
     
     
     
     #Ampiezze dsi probabilità come luminosità
     #taglio sulle ampiezze, abbastanza alto
-
-
