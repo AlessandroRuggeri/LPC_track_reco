@@ -13,8 +13,6 @@ Created on Fri Dec 10 10:08:37 2021
 #%% Importing the libraries
 import pickle
 import numpy as np
-import math as mt
-import random
 #from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 #%%Functions for frequently used operations
@@ -25,7 +23,9 @@ def weight(u,hits,amplitudes,h):
     w = np.zeros(hits.shape[0])
     for i in range(hits.shape[0]):
     #placeholder weight formula
-        w[i] = (amplitudes[i]/((2*mt.pi)**(3/2)*(h**3)))*mt.exp((-1/(2*h**2))*np.dot((hits[i]-u),(hits[i]-u)))
+        #w[i] = (amplitudes[i]/((h**3)*((2*mt.pi)**(3/2))))*mt.exp((-1/(2*(h**2)))*np.dot((hits[i]-u),(hits[i]-u)))
+        w[i]=amplitudes[i]
+        #print("weight {0} = {1}".format(i,w[i]))
     return w
 
 #computing the local mean
@@ -37,9 +37,10 @@ def loc_mean(u,closest,amplitudes,h):
     try:
         m=np.average(closest,axis=0,weights=weights)
     except ZeroDivisionError:
+        print("Zero Division Error!!!")
         print("The weights:")
         print(weights)
-        m=u
+        m=[0.,0.,0.]
     return m
 
 #Computing the local covariant matrix
@@ -63,30 +64,29 @@ def loc_cov(u,closest,m,amplitudes,h):
 #     return lm
 
 #Computing the set of N closest points
+# def N_closest(u,N):
+#     dist = np.zeros(X.shape[0])
+# #computing the distance between u and each X[i]
+#     for i in range(X.shape[0]):
+#         dist[i]=np.linalg.norm(X[i]-u)
+# #sorting the distance array 
+#     dist = np.argsort(dist,axis=0)
+# #selecting the closest N (except for u itself)
+#     dist = dist[1:N+1]
+# #slicing the X matrix over the closest indices
+#     return np.take(X,dist,axis=0), np.take(cut_array,dist,axis=0);
+
+
+#alternative: get points within N voxels
 def N_closest(u,N):
     dist = np.zeros(X.shape[0])
 #computing the distance between u and each X[i]
     for i in range(X.shape[0]):
         dist[i]=np.sqrt(np.dot(X[i]-u,X[i]-u))
-#sorting the distance array 
-    dist = np.argsort(dist,axis=0)
-#selecting the closest N (except for u itself)
-    dist = dist[1:N+1]
+#selecting the points closer than N
+    dist = np.where(np.logical_and(dist>0, dist<=N))[0]
 #slicing the X matrix over the closest indices
-    return np.take(X,dist,axis=0), np.take(cut_array,dist,axis=0);
-
-
-# #alternative: get points within N voxels
-# def N_closest(u,N):
-#     dist = np.zeros(X.shape[0])
-# #computing the distance between u and each X[i]
-#     for i in range(X.shape[0]):
-#         dist[i]=np.sqrt(np.dot(X[i]-u,X[i]-u))
-# #selecting the points closer than N
-#     dist = np.where(np.logical_and(dist>0, dist<=N*dist))[0]
-#     print(dist.shape)
-# #slicing the X matrix over the closest indices
-#     return np.take(X,dist,axis=0),np.take(cut_array,dist,axis=0)
+    return np.take(X,dist,axis=0),np.take(cut_array,dist,axis=0)
 
 
 def remove_old(points,points_old,amplitudes):
@@ -99,28 +99,26 @@ def remove_old(points,points_old,amplitudes):
 #Perform the LPC cycle
 def lpc_cycle(m0,N):
     pathl=0.0
-    m_old=m0
     gamma_old=np.zeros(3,)
     pathl_old=0.
     f_b=+1
-    t=0.5
+    t=1.
     b=0.005
     c=1
     #bandwidth parameter
-    h=0.5
-    N_p=100
+    h=1.
+    N_p=200
     #array in which to store the lpc points
     lpc_points=np.zeros((N_p,3))
+    m_vec=np.zeros_like(lpc_points)
     lpc_points[0]=m0
     count=0
     closest_old=np.zeros_like(X)
-    amplitudes_old=np.zeros_like(cut_array)
 #start the cycle
     for l in range(N_p):
         print("+++++++++++++++++++++")
         print("Cycle {0}".format(l))
         print("LPC point = ",lpc_points[l])
-        #print("path length = ",pathl)
         count+=1
         #find the N closest points to lpc_points[l]
         closest, amplitudes=N_closest(lpc_points[l],N)
@@ -142,14 +140,19 @@ def lpc_cycle(m0,N):
         # print("amps. after removal: ")
         # print(amplitudes)
         #compute the local mean
-        m=loc_mean(lpc_points[l],closest,amplitudes,h)
-        print("local mean = ",m)
+        m_vec[l]=loc_mean(lpc_points[l],closest,amplitudes,h)
+        print("local mean = ",m_vec[l])
         #compute the path length
         if l>0:
-            m_old=loc_mean(lpc_points[l-1],closest_old,amplitudes_old,h)
-            pathl+=np.sqrt(np.dot(m-m_old,m-m_old))
-        sigma = loc_cov(lpc_points[l],closest,m,amplitudes,h)
-        val,gamma=np.linalg.eigh(sigma)
+            pathl+=np.linalg.norm(m_vec[l]-m_vec[l-1])
+            print("old mean = ",m_vec[l-1])
+        print("path length = ",pathl)
+        sigma = loc_cov(lpc_points[l],closest,m_vec[l],amplitudes,h)
+        try:
+            val,gamma=np.linalg.eigh(sigma)
+        except np.linalg.LinAlgError:
+            print("Eigenvalues did not converge: exiting")
+            break
         gamma=gamma[:,val.size-1]
         gamma=gamma/np.sqrt(np.dot(gamma,gamma))
         #reverse the vector if the cos of the angle with the previous is negative
@@ -162,15 +165,13 @@ def lpc_cycle(m0,N):
         #print("gamma = ",gamma)
         #find the next local neighborhood point
         try:
-            lpc_points[l+1]=m+f_b*t*gamma
-            #print("additional factor= ",f_b*t*gamma)
-            #print("lpc_point[l+1] = ",lpc_points[l+1])
+            lpc_points[l+1]=m_vec[l]+f_b*t*gamma
         except IndexError:
             print("Could not reach convergence")
             break;
         #save the "old" variables
         closest_old=closest
-        amplitudes_old=amplitudes
+        #amplitudes_old=amplitudes
         if l==0:
             R=1
         else:
@@ -184,7 +185,9 @@ def lpc_cycle(m0,N):
                 print("Curve has converged: exiting")
                 break
             else:
+                print("----------")
                 print("Inverting")
+                print("----------")
                 f_b=-1
                 lpc_points[l+1]=m0
                 c=1
@@ -202,15 +205,16 @@ def lpc_cycle(m0,N):
                     print("Reached max. number of points: exiting")
                     break
                 else:
-                    print("Inverting")
+                    print("+++++++++++")
+                    print("+Inverting+")
+                    print("+++++++++++")
                     f_b=-1
                     lpc_points[l+1]=m0
                     c=1
                     count=0
+    #Draw the LPC points plot
     lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
     lpc_points=lpc_points*norm
-    #print("LPC points:")
-    #print(lpc_points)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
@@ -218,25 +222,33 @@ def lpc_cycle(m0,N):
     ax.set_zlim((z[0],z[z.shape[0]-1]))
     img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=np.arange(0,lpc_points.shape[0]),s=20,marker='s')
     plt.colorbar(img,fraction=0.025, pad=0.07)
+    plt.title("LPC points plot")
     plt.show()
-    #draw the vector plot
-    lpc_arrows=np.zeros_like(lpc_points)
-    for i in range(1,lpc_points.shape[0]):
-        lpc_arrows[i]=lpc_points[i]-lpc_points[l-1]
+    #Draw the LPC means plot
+    m_vec=m_vec[~np.all(m_vec==0, axis=1)]
+    m_vec=m_vec*norm
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
     ax.set_zlim((z[0],z[z.shape[0]-1]))
-    ax.quiver(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],lpc_arrows[:,0],lpc_arrows[:,1],lpc_arrows[:,2])
-    plt.title("Curve {0}".format(j))
+    img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
+    plt.colorbar(img,fraction=0.025, pad=0.07)
+    plt.title("Mean points plot")
     plt.show()
+    # #draw the vector plot
+    # lpc_arrows=np.zeros_like(lpc_points)
+    # for i in range(1,lpc_points.shape[0]):
+    #     lpc_arrows[i]=lpc_points[i]-lpc_points[l-1]
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.set_xlim((x[0],x[x.shape[0]-1]))
+    # ax.set_ylim((y[0],y[y.shape[0]-1]))
+    # ax.set_zlim((z[0],z[z.shape[0]-1]))
+    # ax.quiver(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],lpc_arrows[:,0],lpc_arrows[:,1],lpc_arrows[:,2])
+    # plt.title("Curve {0}".format(j))
+    # plt.show()
             
-    #print("{0} ==> {1}".format(u,m))
-    
-    
-    
-    
     
 def plot_heatmap():
     fig = plt.figure()
@@ -249,6 +261,49 @@ def plot_heatmap():
     plt.title("Event {0}".format(j))
     plt.show()
 
+#%% Test track generation
+#test the algorithm with a made-up gaussian-distributed track
+#127 "sort-of" converged with N=8
+def gaussian_test():
+    np.random.seed(1392)
+    array[:,:,:]=0.
+    for a in range(array.shape[0]):
+        for j in range(array.shape[0]):
+            y_cor=int(np.abs(np.random.normal(14.,0.5)))
+            for k in range(array.shape[0]):
+                z_cor=int(np.abs(np.random.normal(77.,1)))
+                amp=np.abs(np.random.normal(1.,0.05))
+                array[a][y_cor][z_cor]=amp
+
+#Test the algorithm with a made up straight line track
+#28-127-460-461-480-481 converge
+def linear_test():
+    np.random.seed(430)
+    array[:,:,:]=0.
+    for a in range(array.shape[0]):
+        amp=np.abs(np.random.normal(1.,0.05))
+        array[a][14][77]=amp
+        
+#Vertex test
+def vertex_test():
+    np.random.seed(560)
+    array[:,:,:]=0.
+    for a in range(array.shape[0]):
+        amp=np.abs(np.random.normal(1.,0.05))
+        if 2*a <array.shape[0]:
+            array[a][2*a][77]=amp
+    for a in range(array.shape[0]):
+        amp=np.abs(np.random.normal(1.,0.05))
+        array[a][a//2][77]=amp
+    
+#Test the algorithm with a circular sector track
+def circular_test():
+    np.random.seed(127)
+    array[:,:,:]=0.
+    for a in range(array.shape[0]):
+        y_cor= int(np.sqrt((array.shape[0]-1)**2-a**2))
+        amp=np.abs(np.random.normal(1.,0.05))
+        array[a][y_cor][77]=amp
 #%%Main function
 if  __name__ == "__main__":
 #Opening of the pickled file
@@ -257,21 +312,15 @@ if  __name__ == "__main__":
     key_name, dictionary = next(iter(dictionary.items()))
 #take one of the events (this will have to remain )
 #event 13 of config0 seems good
-    j=273
+    j=13
     event= dictionary[j]['amplitude']
 #convert the event dic. to numpy array
     array=np.array(event)
 #cutting the 8 voxels in x-y closest to the masks
 #this allows to eliminate artefacts
     array=array[:,:,7:(array.shape[2]-7)]
-#Test the algorithm with a made up track
-    np.random.seed(27)
-    array[:,:,:]=0.
-    for a in range(array.shape[0]):
-            # y_cor=int(np.abs(np.random.normal(13.,1)))
-            # z_cor=int(np.abs(np.random.normal(60.,2)))
-            amp=np.abs(np.random.normal(1.,0.05))
-            array[a][14][77]=amp
+#Test the algorithm with made-up tracks
+    gaussian_test()
 #define the complete coordinate arrays
     x= np.arange(0.,array.shape[0],1)
     y=np.arange(0.,array.shape[1],1)
@@ -280,7 +329,7 @@ if  __name__ == "__main__":
     diff=np.max(array)-np.min(array)
     array = array/diff
 #setting the amplitude threshold to be considered
-    cut=0.9*np.max(array)
+    cut=0.5*np.max(array)
 #performing the cut over the amplitude
     cut_array=array[array>=cut]
     x_cut=np.nonzero(array>=cut)[0]
@@ -300,18 +349,21 @@ if  __name__ == "__main__":
 #rescale the array of coordinates
     d = np.zeros([X.shape[0],X.shape[0]])
     for i in range(X.shape[0]):
-        d[i]=np.sqrt(np.dot(X[i],X[i]))
+        d[i]=np.linalg.norm(X[i])
     norm=(d.max()-d.min())
+    norm=1.
     X = X/norm
 #placeholder loc_mean computation
 #the starting point is chosen at random among the points above cut
-    np.random.seed(67)
+    np.random.seed(274)
     start=X[np.random.randint(0,X.shape[0]-1)]
-    #start=[10,10,70]/norm
+    #start=[25,10,70]/norm
     print("Start = ",start)
-    lpc_cycle(start,4)
+    lpc_cycle(start,2)
     
     
-    
+    #array delle medie come risultato
     #Ampiezze dsi probabilità come luminosità
     #taglio sulle ampiezze, abbastanza alto
+#cut value and number of points are relevant parameters:
+#for more complex curves 
