@@ -17,6 +17,8 @@ import math as mt
 import os
 #from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+#import cdist form scipy to efficiently compute distances between all pairs of points
+from scipy.spatial.distance import cdist
 #%%Functions for frequently used operations
 
 #computing the weight vector
@@ -80,15 +82,15 @@ def loc_cov(u,closest,m,amplitudes,h):
 
 
 #alternative: get points within N voxels
-def N_closest(u,N):
-    dist = np.zeros(X.shape[0])
-#computing the distance between u and each X[i]
-    for i in range(X.shape[0]):
-        dist[i]=np.sqrt(np.dot(X[i]-u,X[i]-u))
+def N_closest(u,hits,amps,N):
+    dist = np.zeros(hits.shape[0])
+#computing the distance between u and each hits[i]
+    for i in range(hits.shape[0]):
+        dist[i]=np.sqrt(np.dot(hits[i]-u,hits[i]-u))
 #selecting the points closer than N
     dist = np.where(np.logical_and(dist>0, dist<=N/norm))[0]
-#slicing the X matrix over the closest indices
-    return np.take(X,dist,axis=0),np.take(cut_array,dist,axis=0)
+#slicing the hits matrix over the closest indices
+    return np.take(hits,dist,axis=0),np.take(amps,dist,axis=0)
 
 
 def remove_old(points,points_old,amplitudes):
@@ -97,9 +99,38 @@ def remove_old(points,points_old,amplitudes):
     mask=np.invert(mask)
     return points[mask], amplitudes[mask];
 
+#cycle over the hit clusters to find possible tracks
+def track_cycle(hits, amps):
+    #set the starting point as the c.o.m. of the hits
+    for i in range(2):
+        #plotting the cut data as a heatmap
+        plot_heatmap(hits,amps)   
+        print("Hits shape: ",hits.shape)
+        print("Amps shape: ",amps.shape)
+        try:
+            #compute the c.o.m. of the remaining hits
+            cm=np.average(hits,axis=0,weights=amps)
+            cm=np.reshape(cm,(1,3))
+            #find the index of the hit closest to the c.o.m.
+            index=(cdist(hits,cm)).argmin()
+            #use this hit as the starting point
+            start=hits[index]
+        except ZeroDivisionError:
+            print("Zero Division Error!!!")
+            start=[0.,0.,0.]
+        print("-- Track {0} --".format(i+1))
+        print("Start = ",start*norm)
+        #perform an lpc cycle and save the resulting points (and graphs)
+        lpc_points=lpc_cycle(start,hits,amps,3)
+        print("lpc shape: ",lpc_points.shape)
+        #remove from X the hits in the vicinity of the lpc curve 
+        amps=amps[np.all(cdist(hits,lpc_points)>=3/norm,axis=1)]
+        hits= hits[np.all(cdist(hits,lpc_points)>=3/norm,axis=1)]
+
+
 
 #Perform the LPC cycle
-def lpc_cycle(m0,N):
+def lpc_cycle(m0,hits,amps,N):
     pathl=0.0
     gamma_old=np.zeros(3,)
     pathl_old=0.
@@ -115,7 +146,7 @@ def lpc_cycle(m0,N):
     m_vec=np.zeros_like(lpc_points)
     lpc_points[0]=m0
     count=0
-    closest_old=np.zeros_like(X)
+    closest_old=np.zeros_like(hits)
     angles=np.zeros(lpc_points.shape[0])
 #start the cycle
     for l in range(N_p):
@@ -124,7 +155,7 @@ def lpc_cycle(m0,N):
         print("LPC point = ",lpc_points[l])
         count+=1
         #find the N closest points to lpc_points[l]
-        closest, amplitudes=N_closest(lpc_points[l],N)
+        closest, amplitudes=N_closest(lpc_points[l],hits,amps,N)
         closest, amplitudes=remove_old(closest,closest_old,amplitudes)
         #compute the local mean
         m_vec[l]=loc_mean(lpc_points[l],closest,amplitudes,h)
@@ -147,7 +178,7 @@ def lpc_cycle(m0,N):
             gamma =-1*gamma
         #apply penalization if l>=1
         if l>0:
-            a=(np.dot(gamma,gamma_old))**2
+            a=abs(np.dot(gamma,gamma_old))**2
             gamma=a*gamma+(1-a)*gamma_old
             angles[l]=1- abs(np.dot(gamma,gamma_old))
         #print("gamma = ",gamma)
@@ -203,6 +234,8 @@ def lpc_cycle(m0,N):
     #Draw the LPC points plot
     save_results(N_p,h,t,lpc_points,m_vec,angles)
     
+    return lpc_points
+    
 def save_results(N_p,h,t,lpc_points,m_vec,angles):
     #save the event parameters
     try:
@@ -213,13 +246,13 @@ def save_results(N_p,h,t,lpc_points,m_vec,angles):
         print("Track type: {0}".format(ttype),file=s)
         print("Track seed: {0}".format(track_seed),file=s)
         print("Cut fraction: {0}".format(cut_frac),file=s)
-        print("Start seed: {0}".format(start_seed),file=s)
-        print("Start: {0}".format(start*norm),file=s)
+        #print("Start seed: {0}".format(start_seed),file=s)
+        #print("Start: {0}".format(start*norm),file=s)
         print("h: {0}".format(h),file=s)
         print("t: {0}".format(t),file=s)
         print("Number of points: {0}".format(N_p),file=s)
         #plot the data
-        #save the lpc_points array firts
+        #save the lpc_points array first
         lpc_cache=lpc_points
         #eliminate the unused points
         lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
@@ -279,8 +312,7 @@ def save_results(N_p,h,t,lpc_points,m_vec,angles):
         # plt.title("Curve {0}".format(j))
         # plt.show()
     
-    
-def plot_heatmap():
+def plot_heatmap(hits,amps):
     try:
         os.mkdir(folder)
     except FileExistsError:
@@ -290,7 +322,8 @@ def plot_heatmap():
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
     ax.set_zlim((z[0],z[z.shape[0]-1]))
-    img=ax.scatter(x_cut, y_cut, z_cut, c=cut_array,s=20,marker='s')
+    hits=hits*norm
+    img=ax.scatter(hits[:,0], hits[:,1], hits[:,2], c=amps,s=20,marker='s')
     plt.colorbar(img,fraction=0.025, pad=0.07)
     plt.title("Event heatmap")
     plt.savefig('{0}/Ev_heatmap.png'.format(folder))
@@ -370,7 +403,9 @@ def circular_test():
 #%%Main function
 if  __name__ == "__main__":
 #define the folder in which to save the results
-    folder = "./Plots/Plots_1"
+    #folder = input("Enter the folder name: ")
+    folder="default"
+    folder = "./Plots/{0}".format(folder)
 #Opening of the pickled file
     dictionary=pickle.load(open("Pickles/3dreco0.pkl","rb"))
 #We separate the UUID run key from the voxel dictionary
@@ -401,9 +436,6 @@ if  __name__ == "__main__":
     x_cut=np.nonzero(array>=cut)[0]
     y_cut=np.nonzero(array>=cut)[1]
     z_cut=np.nonzero(array>=cut)[2]
- #plotting the cut data as a heatmap
-    plot_heatmap()   
-#The "algorithm"
 #defining the matrix of cut coordinates
 #reshaping the index vectors to get the right shape for X
     x_cut=x_cut.transpose()
@@ -418,15 +450,21 @@ if  __name__ == "__main__":
         d[i]=np.linalg.norm(X[i])
     norm=(d.max()-d.min())
     X = X/norm
-#placeholder loc_mean computation
+#plotting the cut data as a heatmap
+    plot_heatmap(X,cut_array)   
 #the starting point is chosen at random among the points above cut
-    start_seed=25
-    np.random.seed(int(start_seed))
-    #start=X[np.random.randint(0,X.shape[0]-1)]
-    start=np.array([7,20,78])/norm
-    print("Start = ",start)
-    lpc_cycle(start,3)
-    print("Start = ",start*norm)
+    # start_seed=25
+    # np.random.seed(int(start_seed))
+    # start=X[np.random.randint(0,X.shape[0]-1)]
+    # #start=np.array([7,20,78])/norm
+    # print("Start = ",start)
+    # lpc_cycle(start,3)
+#starting the track finding cycle
+   
+    track_cycle(X,cut_array)
+    
+    
+    
     #array delle medie come risultato
     #Ampiezze dsi probabilità come luminosità
     #taglio sulle ampiezze, abbastanza alto
