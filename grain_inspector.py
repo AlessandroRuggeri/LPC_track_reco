@@ -239,6 +239,7 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
     plt.title("LPC points plot",size=20)
+    plt.savefig('{0}/Ev_{1}_LPC_c{2}.pdf'.format(save_fol,j,cycle))
     plt.pause(0.05)
     #plt.savefig('{0}/LPC_points_{1}.png'.format(folder,cycle))
     #plt.show()
@@ -258,6 +259,7 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
     plt.title("Mean points plot",size=20)
+    plt.savefig('{0}/Ev_{1}_mean_c{2}.pdf'.format(save_fol,j,cycle))
     plt.pause(0.05)
     #plt.show()
     # #Draw the plot of eigenvector angles
@@ -302,6 +304,7 @@ def show_plot():
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Amplitude',size=14,weight='bold',labelpad=10.)
     plt.title("Event heatmap",size=20)
+    plt.savefig(('{0}/Ev_{1}.pdf').format(save_fol,j))
     plt.pause(0.05)
     plt.show(block=False)
 
@@ -321,6 +324,7 @@ def plot_heatmap(hits,amps,cycle):
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Amplitude',size=14,weight='bold',labelpad=10.)
     plt.title("Event heatmap",size=20)
+    plt.savefig('{0}/Ev_{1}_c{2}.pdf'.format(save_fol,j,cycle))
     plt.pause(0.05)
     plt.show(block=False)
 
@@ -351,7 +355,22 @@ def vert_gauss_test():
     return array
 
 
-
+def save_results():
+    #save the event parameters
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    with open('{0}/parameters.txt'.format(save_fol), 'w') as s:
+        print("Event: {0}".format(j),file=s)
+        print("b_x: {0}".format(b_x),file=s)
+        print("b_y: {0}".format(b_y),file=s)
+        print("b_z_d: {0}".format(b_z_d),file=s)
+        print("b_z_d: {0}".format(b_z_u),file=s)
+        print("Cut fraction: {0}".format(c_frac),file=s)
+        print("Cycles: {0}".format(n_cyc),file=s)
+        print("Neighborhood width: {0}".format(n_width),file=s)
+        print("Neglected {0} closest when repeating".format(n_neg),file=s)
 
 #%%GUI setup
 sg.theme('DarkAmber')    # Keep things interesting for your users
@@ -363,14 +382,14 @@ def TextLabel(text): return sg.Text(text+': ', justification='l',font=font_corpu
 browse_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
                               sg.Input(font=font_corpus), 
                               sg.FileBrowse(key="-File-",font=font_corpus)],
-                 [sg.Button("Open",font=font_corpus)]]
+                 [sg.T("")],
+                 [sg.Button("Open file",font=font_corpus)]]
 
 browse_window = sg.Window("Browse Panel",browse_layout)
 
 
 #%% Main
 if  __name__ == "__main__":
-    folder = "./Plots/gui_test"
     #Opening of the pickled file
     print("++++++++++++")
     
@@ -380,7 +399,7 @@ if  __name__ == "__main__":
         event,values=browse_window.Read()
         if event == sg.WIN_CLOSED or event == 'Exit':
             break
-        elif event == "Open":
+        elif event == "Open file":
             file_sel = str(values.get('-File-'))
             print("Selected .pkl: "+file_sel)
             dictionary=pickle.load(open(file_sel,"rb"))
@@ -391,7 +410,11 @@ if  __name__ == "__main__":
             og_array=np.array(dictionary[0][key_list[0]]['amplitude'])
             lpc_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
                                               sg.Input(file_sel,font=font_corpus), 
-                                              sg.FileBrowse(key="-File-",font=font_corpus),sg.Button("Submit",font=font_corpus)],
+                                              sg.FileBrowse(key="-File-",font=font_corpus),sg.Button("Open file",font=font_corpus)],
+                          [sg.Text("Save folder: ",font=font_corpus), 
+                           sg.Input('/Users/alessandro/TesiMag/MURA_code/TrackReco/GRAIN_plots/default',font=font_corpus), 
+                           sg.FolderBrowse(key="-Fol-",font=font_corpus)],
+                          [sg.T("")],
                           [sg.Text('Enter event',font=font_title)],      
                           [sg.Combo(np.arange(len(dictionary)),default_value='0',font=font_corpus,key='-IN0-')],
                           [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
@@ -405,13 +428,15 @@ if  __name__ == "__main__":
                           [TextLabel('Cycles'),sg.Input('1',key='-IN6-',justification='l',font=font_corpus, size=(3))],
                           [TextLabel('N_width'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
                           [TextLabel('Closest'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN8-',font=font_corpus)],
-                          [[sg.T("")],[sg.Button('Start LPC',font=font_corpus)],[sg.T("")],sg.Exit(font=font_corpus)]]      
+                          [[sg.T("")],[sg.Button('Start LPC',font=font_corpus),sg.Button("Save Parameters",font=font_corpus)],
+                          [sg.T("")],sg.Exit(font=font_corpus)]]      
             proc_window = sg.Window('Control Panel', lpc_layout)      
             browse_window.Close()
             while True:
                 
                 
                 event,values = proc_window.read() 
+                save_fol=str(values.get('-Fol-'))
                 j=int(values.get('-IN0-'))
                 key_list=list(dictionary[j])
                 ev=dictionary[j][key_list[0]]['amplitude']
@@ -462,6 +487,9 @@ if  __name__ == "__main__":
                     n_width=int(values.get('-IN7-'))
                     n_neg=int(values.get('-IN8-'))
                     track_cycle(X,cut_array,n_cyc,n_width,n_neg)
+                elif event=="Save Parameters":
+                    save_results()
+                    
                     
                     
             proc_window.close()
