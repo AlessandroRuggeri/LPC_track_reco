@@ -82,11 +82,11 @@ def remove_old(points,points_old,amplitudes):
 
 #%% LPC cycle functions
 #cycle over the hit clusters to find possible tracks
-def track_cycle(hits, amps):
+def track_cycle(hits, amps,n_cyc,n_width,n_neg):
     #keep the complete set of voxels to compute the lpc on
     og_hits=hits
     og_amps=amps
-    for i in range(1):
+    for i in range(n_cyc):
         #plotting the cut data as a heatmap
         plot_heatmap(hits,amps,i)   
         print("Hits shape: ",hits.shape)
@@ -105,11 +105,11 @@ def track_cycle(hits, amps):
         print("-- Track {0} --".format(i+1))
         print("Start = ",start*norm)
         #perform an lpc cycle and save the resulting points (and graphs)
-        lpc_points=lpc_cycle(start,og_hits,og_amps,3,i)
+        lpc_points=lpc_cycle(start,og_hits,og_amps,n_width,i)
         print("lpc shape: ",lpc_points.shape)
         #remove from X the hits in the vicinity of the lpc curve 
-        amps=amps[np.all(cdist(hits,lpc_points)>=7/norm,axis=1)]
-        hits= hits[np.all(cdist(hits,lpc_points)>=7/norm,axis=1)]
+        amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+        hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
 
 
 
@@ -356,8 +356,8 @@ def vert_gauss_test():
 #%%GUI setup
 sg.theme('DarkAmber')    # Keep things interesting for your users
 font_title = ("Gill Sans", 20)
-font_corpus= ("Gill Sans", 16)
-def TextLabel(text): return sg.Text(text+': ', justification='r',font=font_corpus, size=(6,1))
+font_corpus= ("Gill Sans", 18)
+def TextLabel(text): return sg.Text(text+': ', justification='l',font=font_corpus,pad=(5,2), size=(10))
 
 
 browse_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
@@ -389,25 +389,29 @@ if  __name__ == "__main__":
             #use og_array to get the ize of the volume
             key_list=list(dictionary[0])
             og_array=np.array(dictionary[0][key_list[0]]['amplitude'])
-            layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
+            lpc_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
                                               sg.Input(file_sel,font=font_corpus), 
-                                              sg.FileBrowse(key="-File-",font=font_corpus)],
-                          [sg.Button("Submit",font=font_corpus)],
+                                              sg.FileBrowse(key="-File-",font=font_corpus),sg.Button("Submit",font=font_corpus)],
                           [sg.Text('Enter event',font=font_title)],      
                           [sg.Combo(np.arange(len(dictionary)),default_value='0',font=font_corpus,key='-IN0-')],
-                          [sg.Text('Enter parameters',font=font_title)],
-                          [TextLabel('b_x'),sg.Input('10',key='-IN1-',justification='l',font=font_corpus)],  
-                          [TextLabel('b_y'),sg.Input('10',key='-IN2-',justification='l',font=font_corpus)],  
+                          [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
+                          [TextLabel('b_x'),sg.Input('10',key='-IN1-',justification='l',font=font_corpus,size=(4))],  
+                          [TextLabel('b_y'),sg.Input('10',key='-IN2-',justification='l',font=font_corpus,size=(4))],  
                           [TextLabel('b_z_d'),sg.Slider(range=(0,og_array.shape[2]),default_value ='0',orientation = 'horizontal',key='-IN3-',font=font_corpus)],
                           [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[2]),default_value ='130',orientation = 'horizontal',key='-IN4-',font=font_corpus)],
-                          [TextLabel('c_frac'),sg.Input('0.90',key='-IN5-',justification='l',font=font_corpus)],
-                          [sg.Button('Plot',font=font_corpus),sg.Button('Start LPC',font=font_corpus), sg.Exit(font=font_corpus)]]      
-            window = sg.Window('Control Panel', layout)      
+                          [TextLabel('c_frac'),sg.Input('0.90',key='-IN5-',justification='l',font=font_corpus,size=(4))],
+                          [[sg.T("")],sg.Button('Plot',font=font_corpus)],
+                          [[sg.T("")],sg.Text('Enter LPC parameters',font=font_title)],
+                          [TextLabel('Cycles'),sg.Input('1',key='-IN6-',justification='l',font=font_corpus, size=(3))],
+                          [TextLabel('N_width'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
+                          [TextLabel('Closest'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN8-',font=font_corpus)],
+                          [[sg.T("")],[sg.Button('Start LPC',font=font_corpus)],[sg.T("")],sg.Exit(font=font_corpus)]]      
+            proc_window = sg.Window('Control Panel', lpc_layout)      
             browse_window.Close()
             while True:
                 
                 
-                event,values = window.read() 
+                event,values = proc_window.read() 
                 j=int(values.get('-IN0-'))
                 key_list=list(dictionary[j])
                 ev=dictionary[j][key_list[0]]['amplitude']
@@ -454,12 +458,15 @@ if  __name__ == "__main__":
                     plt.close()
                     show_plot()
                 elif event=='Start LPC':
-                    track_cycle(X,cut_array)
+                    n_cyc=int(values.get('-IN6-'))
+                    n_width=int(values.get('-IN7-'))
+                    n_neg=int(values.get('-IN8-'))
+                    track_cycle(X,cut_array,n_cyc,n_width,n_neg)
                     
                     
-            window.close()
+            proc_window.close()
             
             
             
     browse_window.close()
-    window.close()
+    proc_window.close()
