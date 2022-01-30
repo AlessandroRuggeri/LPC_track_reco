@@ -15,13 +15,11 @@ import pickle
 import numpy as np
 import math as mt
 import os
-import  tkinter as tk
+#import  tkinter as tk
 #from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 #import cdist form scipy to efficiently compute distances between all pairs of points
 from scipy.spatial.distance import cdist
-
-from tkinter import filedialog
 #%%Functions for frequently used operations
 
 #computing the weight vector
@@ -38,6 +36,8 @@ def weight(u,hits,amplitudes,h):
 def loc_mean(u,closest,amplitudes,h):
     #find the weights
     weights=weight(u,closest,amplitudes,h)
+    #flag to call-off execution if no weights are found
+    zero_flag= False
     #compute the average
     try:
         m=np.average(closest,axis=0,weights=weights)
@@ -46,7 +46,8 @@ def loc_mean(u,closest,amplitudes,h):
         print("The weights:")
         print(weights)
         m=[0.,0.,0.]
-    return m
+        zero_flag=True
+    return m, zero_flag
 
 #Computing the local covariant matrix
 def loc_cov(u,closest,m,amplitudes,h):
@@ -144,7 +145,10 @@ def lpc_cycle(m0,hits,amps,N,cycle):
         closest, amplitudes=N_closest(lpc_points[l],hits,amps,N)
         closest, amplitudes=remove_old(closest,closest_old,amplitudes)
         #compute the local mean
-        m_vec[l]=loc_mean(lpc_points[l],closest,amplitudes,h)
+        m_vec[l],zero_flag=loc_mean(lpc_points[l],closest,amplitudes,h)
+        if zero_flag:
+                print("Zero division error: exiting cycle")
+                break;
         #compute the path length
         if l>0:
             pathl+=np.linalg.norm(m_vec[l]-m_vec[l-1])
@@ -225,30 +229,40 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     #eliminate the unused points
     lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
     lpc_points=lpc_points*norm
-    fig1 = plt.figure(figsize=(10, 10))
+    fig1 = plt.figure(figsize=(7, 7))
     ax = fig1.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
     ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
     img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=np.arange(0,lpc_points.shape[0]),s=20,marker='s')
-    plt.colorbar(img,fraction=0.025, pad=0.07,label="Point index")
-    plt.title("LPC points plot")
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.title("LPC points plot",size=20)
+    plt.pause(0.05)
     #plt.savefig('{0}/LPC_points_{1}.png'.format(folder,cycle))
     #plt.show()
     #Draw the LPC means plot
     m_vec=m_vec[~np.all(m_vec==0, axis=1)]
     m_vec=m_vec*norm
-    fig2 = plt.figure(figsize=(10, 10))
+    fig2 = plt.figure(figsize=(7,7))
     ax = fig2.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
     ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
     img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
-    plt.colorbar(img,fraction=0.025, pad=0.07,label="Point index")
-    plt.title("Mean points plot")
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.title("Mean points plot",size=20)
+    plt.pause(0.05)
     #plt.show()
     #Draw the plot of eigenvector angles
-    fig3 = plt.figure(figsize=(10, 10))
+    fig3 = plt.figure(figsize=(7, 7))
     lpc_range= np.arange(angles.shape[0])
     plt.plot(lpc_range, angles,marker='o')
     plt.title("Feature points plot")
@@ -256,37 +270,19 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     #plt.show()
     #Draw the heatmap of eigenvector angles
     angles=angles[~np.all(lpc_cache==0,axis=1)]
-    fig4 = plt.figure(figsize=(10, 10))
+    fig4 = plt.figure(figsize=(7, 7))
     ax = fig4.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
     ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
     img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=angles,s=20,marker='s')
     plt.colorbar(img,fraction=0.025, pad=0.07,label="Angle")
     plt.title("Eigenvector angles plot")
     #plt.savefig('{0}/Angles_plot.png'.format(folder,cycle))
-    if question:
-        try:
-            os.mkdir(folder)
-        except FileExistsError:
-            pass
-        fig1.savefig('{0}/LPC_points_{1}.png'.format(folder,cycle))
-        fig2.savefig('{0}/Mean_points_{1}.png'.format(folder,cycle))
-        fig3.savefig('{0}/Feature_points_{1}.png'.format(folder,cycle))
-        fig4.savefig('{0}/Angles_plot_{1}.png'.format(folder,cycle))
     plt.show()
-    # #draw the vector plot
-    # lpc_arrows=np.zeros_like(lpc_points)
-    # for i in range(1,lpc_points.shape[0]):
-    #     lpc_arrows[i]=lpc_points[i]-lpc_points[l-1]
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.set_xlim((x[0],x[x.shape[0]-1]))
-    # ax.set_ylim((y[0],y[y.shape[0]-1]))
-    # ax.set_zlim((z[0],z[z.shape[0]-1]))
-    # ax.quiver(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],lpc_arrows[:,0],lpc_arrows[:,1],lpc_arrows[:,2])
-    # plt.title("Curve {0}".format(j))
-    # plt.show()
 
 
 
@@ -304,9 +300,28 @@ def save_results():
         print("Track seed: {0}".format(track_seed),file=s)
         print("Cut fraction: {0}".format(cut_frac),file=s)
 
+def show_plot():
+    hits=X
+    amps=cut_array
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    fig.tight_layout()
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=10,weight='bold')
+    ax.set_ylabel('y',fontsize=10,weight='bold')
+    ax.set_zlabel('z',fontsize=10,weight='bold')
+    hits=hits*norm
+    img=ax.scatter(hits[:,0], hits[:,1], hits[:,2], c=amps,s=20,marker='s')
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Amplitude',size=10,weight='bold')
+    plt.title("Event heatmap",size=20)
+    plt.pause(0.05)
+    plt.show(block=False)
 
 def plot_heatmap(hits,amps,cycle):
-    fig = plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
     ax.set_ylim((y[0],y[y.shape[0]-1]))
@@ -344,20 +359,20 @@ def vert_gauss_test():
     seed[0]=1392
     np.random.seed(int(seed[0]))
     for a in range(array.shape[0]):
-        for j in range(array.shape[0]):
+        for j in range(100):
             y_cor=int(np.abs(np.random.normal(a*0.5,0.5)))
-            for k in range(array.shape[0]):
-                z_cor=int(np.abs(np.random.normal(77.,0.5)))
+            for k in range(100):
+                z_cor=int(np.abs(np.random.normal(77.,1.)))
                 amp=np.abs(np.random.normal(1.,0.05))
                 array[a][y_cor][z_cor]=amp
     seed[1]=4592
     np.random.seed(int(seed[1]))
     for a in range(array.shape[0]):
-        for j in range(array.shape[0]):
+        for j in range(100):
             if 2*a <array.shape[0]:
-                y_cor=int(np.abs(np.random.normal(a*2,0.5)))
-                for k in range(array.shape[0]):
-                    z_cor=int(np.abs(np.random.normal(77.,0.5)))
+                y_cor=int(np.abs(np.random.normal(2*a,0.5)))
+                for k in range(100):
+                    z_cor=int(np.abs(np.random.normal(77.,1.)))
                     amp=np.abs(np.random.normal(1.,0.05))
                     array[a][y_cor][z_cor]=amp
     return array,"Gaussian tracks vertex",seed
@@ -401,10 +416,13 @@ if  __name__ == "__main__":
     folder = "./Plots/{0}".format(folder)
 #Opening of the pickled file
     print("++++++++++++")
-    root = tk.Tk()
-    root.withdraw()
-    print("Select the .pkl")
-    file_sel = filedialog.askopenfilename()
+    print("Enter dataset parameters:")
+    print("++++++++++++")
+    # root = tk.Tk()
+    # root.withdraw()
+    # print("Select the .pkl")
+    # file_sel = filedialog.askopenfilename()
+    file_sel = "./eventi_valentina/diagmu_1ev_reco.pkl"
     dictionary=pickle.load(open(file_sel,"rb"))
 #We separate the UUID run key from the voxel dictionary
     key_name, dictionary = next(iter(dictionary.items()))
@@ -418,48 +436,58 @@ if  __name__ == "__main__":
     #Test the algorithm with made-up tracks
     og_array,ttype,track_seed = vert_gauss_test()
     array=np.empty_like(og_array)
-#cutting the voxels closest to the masks to avoid artifacts
+#default cuts the voxels closest to the masks to avoid artifacts
     b_x=1
     b_y=1
-    b_z=7
-    array=og_array[b_x:(array.shape[0]-b_x),b_y:(array.shape[1]-b_y),b_z:(array.shape[2]-b_z)]
-#define the complete coordinate arrays
-    x= np.arange(0.,array.shape[0],1)
-    y=np.arange(0.,array.shape[1],1)
-    z=np.arange(0.,array.shape[2],1)
-#rescaling the amplitudes
-    diff=np.max(array)-np.min(array)
-    array = array/diff
-#setting the amplitude threshold to be considered
-    cut_frac=0.5
-    cut=cut_frac*np.max(array)
-#performing the cut over the amplitude
-    cut_array=array[array>=cut]
-    x_cut=np.nonzero(array>=cut)[0]
-    y_cut=np.nonzero(array>=cut)[1]
-    z_cut=np.nonzero(array>=cut)[2]
-#defining the matrix of cut coordinates
-#reshaping the index vectors to get the right shape for X
-    x_cut=x_cut.transpose()+0.5
-    y_cut=y_cut.transpose()+0.5
-    z_cut=z_cut.transpose()+0.5
-    cut_array=cut_array.transpose()
-#rows for the events, columns for the coordinates
-    X=np.column_stack((x_cut,y_cut,z_cut))
-#rescale the array of coordinates
-    d = np.zeros([X.shape[0],X.shape[0]])
-    for i in range(X.shape[0]):
-        d[i]=np.linalg.norm(X[i])
-    norm=(d.max()-d.min())
-    X = X/norm
-    
+    b_z=10
+    #default amplitude threshold to be considered
+    cut_frac=0.6
+    while True:
+        #initialize the array
+        array=np.empty_like(og_array)
+        b_x=int(input("Enter x cut: ") or b_x)
+        b_y=int(input("Enter y cut: ") or b_y)
+        b_z=int(input("Enter z cut: ") or b_z)
+        cut_frac=float(input("Enter amplitude cut: ") or cut_frac)
+        array=og_array[b_x:(og_array.shape[0]-b_x),b_y:(og_array.shape[1]-b_y),b_z:(og_array.shape[2]-b_z)]
+    #define the complete coordinate arrays
+        x= np.arange(0.,array.shape[0],1)
+        y=np.arange(0.,array.shape[1],1)
+        z=np.arange(0.,array.shape[2],1)
+    #rescaling the amplitudes
+        array=array-np.min(array)
+        array = array/np.max(array)
+    #performing the cut over the amplitude
+        cut_array=array[array>=cut_frac]
+        x_cut=np.nonzero(array>=cut_frac)[0]+b_x
+        y_cut=np.nonzero(array>=cut_frac)[1]+b_y
+        z_cut=np.nonzero(array>=cut_frac)[2]+b_z
+    #defining the matrix of cut coordinates
+    #reshaping the index vectors to get the right shape for X
+        x_cut=x_cut.transpose()+0.5
+        y_cut=y_cut.transpose()+0.5
+        z_cut=z_cut.transpose()+0.5
+        cut_array=cut_array.transpose()
+    #rows for the events, columns for the coordinates
+        X=np.column_stack((x_cut,y_cut,z_cut))
+    #rescale the array of coordinates
+        d = np.zeros([X.shape[0],X.shape[0]])
+        for i in range(X.shape[0]):
+            d[i]=np.linalg.norm(X[i])
+        norm=(d.max()-d.min())
+        X = X/norm
+        show_plot()
+        if input("Start the LPC cycle? [y/n] ") == "y":
+            break            
     question = True  
 #starting the track finding cycle
     track_cycle(X,cut_array)
     save_results()
     
-    #array delle medie come risultato
-    #Ampiezze dsi probabilità come luminosità
-    #taglio sulle ampiezze, abbastanza alto
-#cut value and number of points are relevant parameters:
-#for more complex curves 
+    
+    
+    
+    
+    
+    
+     
