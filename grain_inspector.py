@@ -6,7 +6,7 @@ Created on Fri Jan 28 17:06:25 2022
 @author: alessandro
 """
 
-import PySimpleGUI as sg      
+import PySimpleGUI as sg
 import numpy as np
 import pickle
 import math as mt
@@ -16,6 +16,8 @@ import os
 import matplotlib.pyplot as plt
 #import cdist form scipy to efficiently compute distances between all pairs of points
 from scipy.spatial.distance import cdist
+import scipy.optimize as optimize
+
 #%%Functions for frequently used operations
 
 #computing the weight vector
@@ -24,7 +26,8 @@ def weight(u,hits,amplitudes,h):
     w = np.zeros(hits.shape[0])
     for i in range(hits.shape[0]):
     #computing the weights
-        w[i] = (amplitudes[i]/((h**3)*((2*mt.pi)**(3/2))))*mt.exp((-1/(2*(h**2)))*np.dot((hits[i]-u),(hits[i]-u)))
+        w[i] = (amplitudes[i]/
+                ((h**3)*((2*mt.pi)**(3/2))))*mt.exp((-1/(2*(h**2)))*np.dot((hits[i]-u),(hits[i]-u)))
     return w
 
 #computing the local mean
@@ -78,25 +81,30 @@ def remove_old(points,points_old,amplitudes):
     #print("points shape: ",points.shape,", old points shape: ",points_old.shape)
     mask=(points[:,None]==points_old).all(-1).any(-1)
     mask=np.invert(mask)
-    return points[mask], amplitudes[mask];
+    return points[mask], amplitudes[mask]
 
 #%% LPC cycle functions
 #cycle over the hit clusters to find possible tracks
-def track_cycle(hits, amps,n_cyc,n_width,n_neg):
+def track_cycle(hits, amps):
     #keep the complete set of voxels to compute the lpc on
     og_hits=hits
     og_amps=amps
+    #define the arrays that will contain the points and parameters
+    #for the fits
+    par_ar_xy=np.zeros((n_cyc,2))
+    par_ar_xz=np.zeros((n_cyc,2))
+    m_array=np.zeros((n_cyc,N_p,3))
     for i in range(n_cyc):
         #plotting the cut data as a heatmap
-        plot_heatmap(hits,amps,i)   
+        plot_heatmap(hits,amps,i)
         print("Hits shape: ",hits.shape)
         print("Amps shape: ",amps.shape)
         try:
             #compute the c.o.m. of the remaining hits
-            cm=np.average(hits,axis=0,weights=amps)
-            cm=np.reshape(cm,(1,3))
+            c_mass=np.average(hits,axis=0,weights=amps)
+            c_mass=np.reshape(c_mass,(1,3))
             #find the index of the hit closest to the c.o.m.
-            index=(cdist(hits,cm)).argmin()
+            index=(cdist(hits,c_mass)).argmin()
             #use this hit as the starting point
             start=hits[index]
         except ZeroDivisionError:
@@ -105,13 +113,63 @@ def track_cycle(hits, amps,n_cyc,n_width,n_neg):
         print("-- Track {0} --".format(i+1))
         print("Start = ",start*norm)
         #perform an lpc cycle and save the resulting points (and graphs)
-        lpc_points=lpc_cycle(start,og_hits,og_amps,n_width,i)
+        lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i)
         print("lpc shape: ",lpc_points.shape)
-        #remove from X the hits in the vicinity of the lpc curve 
+        #remove from X the hits in the vicinity of the lpc curve
         amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
         hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+        #return to the original scale
+        m_array[i]=m_array[i]*norm
+        par_ar_xy[i],par_ar_xz[i]=fit_projections(m_array[i])
+    #plot the combined fitted data using a cycle
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
+    plt.title("Mean points fit",size=20)
+    for i in range(n_cyc):
+        m_arrayc=m_array[i][~np.all(m_array[i]==0, axis=1)]
+        img=ax.scatter(m_arrayc[:,0],m_arrayc[:,1],
+                       m_arrayc[:,2],c=np.arange(0,m_arrayc.shape[0]),s=20,marker='s')
+        plt.plot(m_arrayc[:,0],m_arrayc[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
+                 m_arrayc[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1],'r',linewidth=3)
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.2)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.show()
+    find_vert(m_array,par_ar_xy,par_ar_xz)
 
-
+#function that determines the vertex with a closeness criterion
+def find_vert(m_array,par_ar_xy,par_ar_xz):
+    for i  in range(n_cyc):
+        #cycle in range(i,2) to count each pair only once
+        for j in range(i+1,n_cyc):
+            m_array1=m_array[i][~np.all(m_array[i]==0, axis=1)]
+            m_array2=m_array[j][~np.all(m_array[j]==0, axis=1)]
+            fit_points1=np.array([m_array1[:,0],m_array1[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
+                                  m_array1[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1]])
+            fit_points2=np.array([m_array2[:,0],m_array2[:,0]*par_ar_xy[j][0]+par_ar_xy[j][1],
+                                  m_array2[:,0]*par_ar_xz[j][0]+par_ar_xz[j][1]])
+            #transpose to get (n,3) arrays
+            fit_points1=fit_points1.transpose()
+            fit_points2=fit_points2.transpose()
+            #sort by the "x" coordinate
+            fit_points1=fit_points1[np.argsort(fit_points1[:, 0])]
+            fit_points2=fit_points2[np.argsort(fit_points2[:, 0])]
+            #get the array of distances between all the points
+            t_dist=cdist(fit_points1,fit_points2)
+            print(t_dist.shape)
+            ind=np.unravel_index(np.argmin(t_dist, axis=None), t_dist.shape)
+            if t_dist.min() <=n_width:
+                print("Vertex between tracks {0} and {1} found".format(i,j))
+                print("Distance: ",t_dist.min())
+                print("Track 1 coordinate: ",fit_points1[ind[0]])
+                print("Track 2 coordinate: ",fit_points2[ind[1]])
+            else:
+                print("No vertex found")
 
 #Perform the LPC cycle
 def lpc_cycle(m0,hits,amps,N,cycle):
@@ -124,7 +182,6 @@ def lpc_cycle(m0,hits,amps,N,cycle):
     c=1
     #bandwidth parameter
     h=0.05
-    N_p=200
     #array in which to store the lpc points
     lpc_points=np.zeros((N_p,3))
     m_vec=np.zeros_like(lpc_points)
@@ -145,7 +202,7 @@ def lpc_cycle(m0,hits,amps,N,cycle):
         m_vec[l],zero_flag=loc_mean(lpc_points[l],closest,amplitudes,h)
         if zero_flag:
                 print("Zero division error: exiting cycle")
-                break;
+                break
         #compute the path length
         if l>0:
             pathl+=np.linalg.norm(m_vec[l]-m_vec[l-1])
@@ -170,7 +227,7 @@ def lpc_cycle(m0,hits,amps,N,cycle):
             lpc_points[l+1]=m_vec[l]+f_b*t*gamma
         except IndexError:
             print("Could not reach convergence")
-            break;
+            break
         #save the "old" variables
         closest_old=closest
         #amplitudes_old=amplitudes
@@ -216,13 +273,48 @@ def lpc_cycle(m0,hits,amps,N,cycle):
                     count=0
     #Draw the LPC points plot
     draw_plots(lpc_points,m_vec,angles,cycle)
-    
-    return lpc_points
-#%%Drawing functions 
+
+    return lpc_points, m_vec
+
+def line(x,m,b):
+    return x*m+b
+
+def fit_projections(m_vec):
+    #m_vec is already rescaled
+    #cut the non-assigned points
+    m_vec=m_vec[~np.all(m_vec==0, axis=1)]
+    #get the projections with slicings
+    x_y_pro=m_vec[:,[0,1]]
+    x_z_pro=m_vec[:,[0,2]]
+    #perform the linear fit to the xy projection
+    par_xy,cov_xy=optimize.curve_fit(line,x_y_pro[:,0],x_y_pro[:,1])
+    #perform the linear fit to the xy projection
+    par_xz,cov_xz=optimize.curve_fit(line,x_z_pro[:,0],x_z_pro[:,1])
+    #2D projection plots are in the RecoCode
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
+    img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.title("Mean points fit",size=20)
+    plt.plot(m_vec[:,0],m_vec[:,0]*par_xy[0]+par_xy[1],
+             m_vec[:,0]*par_xz[0]+par_xz[1],'r',linewidth=3)
+    plt.show()
+    print(par_xy)
+    print(par_xz)
+    return par_xy,par_xz
+
+
+#%%Drawing functions
 def draw_plots(lpc_points,m_vec,angles,cycle):
     #plot the data
-    #if points are to be saved check if the folder already exists
-    lpc_cache=lpc_points
+    # lpc_cache=lpc_points
     #eliminate the unused points
     lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
     lpc_points=lpc_points*norm
@@ -235,7 +327,8 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     ax.set_xlabel('x',fontsize=14,weight='bold')
     ax.set_ylabel('y',fontsize=14,weight='bold')
     ax.set_zlabel('z',fontsize=14,weight='bold')
-    img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=np.arange(0,lpc_points.shape[0]),s=20,marker='s')
+    img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],
+                   c=np.arange(0,lpc_points.shape[0]),s=20,marker='s')
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
     plt.title("LPC points plot",size=20)
@@ -329,32 +422,6 @@ def plot_heatmap(hits,amps,cycle):
     plt.show(block=False)
 
 
-
-def vert_gauss_test():
-    array=np.zeros((50,50,130))
-    seed=np.zeros(2)
-    seed[0]=1392
-    np.random.seed(int(seed[0]))
-    for a in range(array.shape[0]):
-        for j in range(100):
-            y_cor=int(np.abs(np.random.normal(a*0.5,0.5)))
-            for k in range(100):
-                z_cor=int(np.abs(np.random.normal(77.,1.)))
-                amp=np.abs(np.random.normal(1.,0.05))
-                array[a][y_cor][z_cor]=amp
-    seed[1]=4592
-    np.random.seed(int(seed[1]))
-    for a in range(array.shape[0]):
-        for j in range(100):
-            if 2*a <array.shape[0]:
-                y_cor=int(np.abs(np.random.normal(2*a,0.5)))
-                for k in range(100):
-                    z_cor=int(np.abs(np.random.normal(77.,1.)))
-                    amp=np.abs(np.random.normal(1.,0.05))
-                    array[a][y_cor][z_cor]=amp
-    return array
-
-
 def save_results():
     #save the event parameters
     try:
@@ -362,6 +429,7 @@ def save_results():
     except FileExistsError:
         pass
     with open('{0}/parameters.txt'.format(save_fol), 'w') as s:
+        print("File: {0}".format(file_sel),file=s)
         print("Event: {0}".format(j),file=s)
         print("b_x: {0}".format(b_x),file=s)
         print("b_y: {0}".format(b_y),file=s)
@@ -376,14 +444,15 @@ def save_results():
 sg.theme('DarkAmber')    # Keep things interesting for your users
 font_title = ("Gill Sans", 20)
 font_corpus= ("Gill Sans", 18)
-def TextLabel(text): return sg.Text(text+': ', justification='l',font=font_corpus,pad=(5,2), size=(10))
+def TextLabel(text): return sg.Text(text+': ',
+                                    justification='l',font=font_corpus,pad=(5,2), size=(10))
 
-
-browse_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
-                              sg.Input(font=font_corpus), 
-                              sg.FileBrowse(key="-File-",font=font_corpus)],
+browse_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus),
+                              sg.Input(font=font_corpus),
+                              sg.FileBrowse(key="-File-",font=font_corpus,initial_folder=
+                                            '/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles')],
                  [sg.T("")],
-                 [sg.Button("Open file",font=font_corpus)]]
+                 [sg.Button("Open file",font=font_corpus),sg.Exit(font=font_corpus)]]
 
 browse_window = sg.Window("Browse Panel",browse_layout)
 
@@ -392,50 +461,60 @@ browse_window = sg.Window("Browse Panel",browse_layout)
 if  __name__ == "__main__":
     #Opening of the pickled file
     print("++++++++++++")
-    
-    
+
+
     while True:                             # The Event Loop
-    
+
         event,values=browse_window.Read()
         if event == sg.WIN_CLOSED or event == 'Exit':
             break
         elif event == "Open file":
             file_sel = str(values.get('-File-'))
+            try:
+                dictionary=pickle.load(open(file_sel,"rb"))
+            except FileNotFoundError:
+                print("Please select a valid file!")
+                continue
             print("Selected .pkl: "+file_sel)
-            dictionary=pickle.load(open(file_sel,"rb"))
             key_name, dictionary = next(iter(dictionary.items()))
         #take one of the events (this will have to remain )
             #use og_array to get the ize of the volume
             key_list=list(dictionary[0])
             og_array=np.array(dictionary[0][key_list[0]]['amplitude'])
-            lpc_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus), 
-                                              sg.Input(file_sel,font=font_corpus), 
-                                              sg.FileBrowse(key="-File-",font=font_corpus),sg.Button("Open file",font=font_corpus)],
-                          [sg.Text("Save folder: ",font=font_corpus), 
-                           sg.Input('/Users/alessandro/TesiMag/MURA_code/TrackReco/GRAIN_plots/default',font=font_corpus), 
-                           sg.FolderBrowse(key="-Fol-",font=font_corpus)],
+            lpc_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus),
+                                              sg.Input(file_sel,font=font_corpus),
+                                              sg.FileBrowse(key="-File-",font=font_corpus),
+                                              sg.Button("Open file",font=font_corpus)],
+                          [sg.Text("Save folder: ",font=font_corpus),
+                           sg.Input(font=font_corpus),
+                           sg.FolderBrowse(key="-Fol-",
+                                           font=font_corpus,initial_folder='/Users/alessandro/TesiMag/MURA_code/TrackReco/GRAIN_plots')],
                           [sg.T("")],
-                          [sg.Text('Enter event',font=font_title)],      
+                          [sg.Text('Enter event',font=font_title)],
                           [sg.Combo(np.arange(len(dictionary)),default_value='0',font=font_corpus,key='-IN0-')],
                           [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
-                          [TextLabel('b_x'),sg.Input('10',key='-IN1-',justification='l',font=font_corpus,size=(4))],  
-                          [TextLabel('b_y'),sg.Input('10',key='-IN2-',justification='l',font=font_corpus,size=(4))],  
-                          [TextLabel('b_z_d'),sg.Slider(range=(0,og_array.shape[2]),default_value ='0',orientation = 'horizontal',key='-IN3-',font=font_corpus)],
-                          [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[2]),default_value ='130',orientation = 'horizontal',key='-IN4-',font=font_corpus)],
+                          [TextLabel('b_x'),sg.Input('10',key='-IN1-',justification='l',font=font_corpus,size=(4))],
+                          [TextLabel('b_y'),sg.Input('10',key='-IN2-',justification='l',font=font_corpus,size=(4))],
+                          [TextLabel('b_z_d'),sg.Slider(range=(0,og_array.shape[2]),
+                                                        default_value ='0',orientation = 'horizontal',key='-IN3-',font=font_corpus)],
+                          [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[2]),
+                                                        default_value ='130',orientation = 'horizontal',key='-IN4-',font=font_corpus)],
                           [TextLabel('c_frac'),sg.Input('0.90',key='-IN5-',justification='l',font=font_corpus,size=(4))],
                           [[sg.T("")],sg.Button('Plot',font=font_corpus)],
                           [[sg.T("")],sg.Text('Enter LPC parameters',font=font_title)],
                           [TextLabel('Cycles'),sg.Input('1',key='-IN6-',justification='l',font=font_corpus, size=(3))],
-                          [TextLabel('N_width'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
-                          [TextLabel('Closest'),sg.Slider(range=(1,10),default_value ='3',orientation = 'horizontal',key='-IN8-',font=font_corpus)],
+                          [TextLabel('N_width'),sg.Slider(range=(1,10),
+                                                          default_value ='3',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
+                          [TextLabel('Closest'),sg.Slider(range=(1,10),
+                                                          default_value ='3',orientation = 'horizontal',key='-IN8-',font=font_corpus)],
                           [[sg.T("")],[sg.Button('Start LPC',font=font_corpus),sg.Button("Save Parameters",font=font_corpus)],
-                          [sg.T("")],sg.Exit(font=font_corpus)]]      
-            proc_window = sg.Window('Control Panel', lpc_layout)      
+                          [sg.T("")],sg.Exit(font=font_corpus)]]
+            proc_window = sg.Window('Control Panel', lpc_layout)
             browse_window.Close()
             while True:
-                
-                
-                event,values = proc_window.read() 
+
+
+                event,values = proc_window.read()
                 save_fol=str(values.get('-Fol-'))
                 j=int(values.get('-IN0-'))
                 key_list=list(dictionary[j])
@@ -445,6 +524,7 @@ if  __name__ == "__main__":
                 for i in range(1,len(dictionary[j])):
                     ev=dictionary[j][key_list[i]]['amplitude']
                     og_array+=np.array(ev)
+                #og_array=np.swapaxes(og_array, 0, 2)
                 array=np.empty_like(og_array)
                 b_x=int(values.get('-IN1-'))
                 b_y=int(values.get('-IN2-'))
@@ -477,24 +557,35 @@ if  __name__ == "__main__":
                     d[i]=np.linalg.norm(X[i])
                 norm=(d.max()-d.min())
                 X = X/norm
+                #set the max number of LPC points as a main var.
+                N_p=200
                 if event == sg.WIN_CLOSED or event == 'Exit':
-                    break      
+                    break
                 elif event=='Plot':
                     plt.close()
-                    show_plot()
+                    try:
+                        show_plot()
+                    except OSError:
+                        print("Select a valid folder!")
+                        continue
                 elif event=='Start LPC':
                     n_cyc=int(values.get('-IN6-'))
                     n_width=int(values.get('-IN7-'))
                     n_neg=int(values.get('-IN8-'))
-                    track_cycle(X,cut_array,n_cyc,n_width,n_neg)
+                    try:
+                        track_cycle(X,cut_array)
+                    except OSError:
+                        print("Select a valid folder!")
+                        continue
                 elif event=="Save Parameters":
-                    save_results()
-                    
-                    
-                    
+                    try:
+                        save_results()
+                    except OSError:
+                        print("Select a valid folder!")
+                        continue
+
             proc_window.close()
             
             
-            
+        proc_window.close()
     browse_window.close()
-    proc_window.close()
