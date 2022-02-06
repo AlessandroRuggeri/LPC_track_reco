@@ -20,6 +20,7 @@ import os
 import matplotlib.pyplot as plt
 #import cdist form scipy to efficiently compute distances between all pairs of points
 from scipy.spatial.distance import cdist
+import scipy.optimize as optimize
 #%%Functions for frequently used operations
 
 #computing the weight vector
@@ -84,22 +85,28 @@ def remove_old(points,points_old,amplitudes):
     mask=np.invert(mask)
     return points[mask], amplitudes[mask];
 
+#%% LPC cycle functions
 #cycle over the hit clusters to find possible tracks
 def track_cycle(hits, amps):
     #keep the complete set of voxels to compute the lpc on
     og_hits=hits
     og_amps=amps
-    for i in range(2):
+    #define the arrays that will contain the points and parameters
+    #for the fits
+    par_ar_xy=np.zeros((n_cyc,2))
+    par_ar_xz=np.zeros((n_cyc,2))
+    m_array=np.zeros((n_cyc,N_p,3))
+    for i in range(n_cyc):
         #plotting the cut data as a heatmap
-        plot_heatmap(hits,amps,i)   
+        plot_heatmap(hits,amps,i)
         print("Hits shape: ",hits.shape)
         print("Amps shape: ",amps.shape)
         try:
             #compute the c.o.m. of the remaining hits
-            cm=np.average(hits,axis=0,weights=amps)
-            cm=np.reshape(cm,(1,3))
+            c_mass=np.average(hits,axis=0,weights=amps)
+            c_mass=np.reshape(c_mass,(1,3))
             #find the index of the hit closest to the c.o.m.
-            index=(cdist(hits,cm)).argmin()
+            index=(cdist(hits,c_mass)).argmin()
             #use this hit as the starting point
             start=hits[index]
         except ZeroDivisionError:
@@ -108,13 +115,64 @@ def track_cycle(hits, amps):
         print("-- Track {0} --".format(i+1))
         print("Start = ",start*norm)
         #perform an lpc cycle and save the resulting points (and graphs)
-        lpc_points=lpc_cycle(start,og_hits,og_amps,3,i)
+        lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i)
         print("lpc shape: ",lpc_points.shape)
-        #remove from X the hits in the vicinity of the lpc curve 
-        amps=amps[np.all(cdist(hits,lpc_points)>=5/norm,axis=1)]
-        hits= hits[np.all(cdist(hits,lpc_points)>=5/norm,axis=1)]
+        #remove from X the hits in the vicinity of the lpc curve
+        amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+        hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+        #return to the original scale
+        m_array[i]=m_array[i]*norm
+        par_ar_xy[i],par_ar_xz[i]=fit_projections(m_array[i])
+    #plot the combined fitted data using a cycle
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
+    plt.title("Mean points fit",size=20)
+    for i in range(n_cyc):
+        m_arrayc=m_array[i][~np.all(m_array[i]==0, axis=1)]
+        img=ax.scatter(m_arrayc[:,0],m_arrayc[:,1],
+                       m_arrayc[:,2],c=np.arange(0,m_arrayc.shape[0]),s=20,marker='s')
+        plt.plot(m_arrayc[:,0],m_arrayc[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
+                 m_arrayc[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1],'r',linewidth=3)
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.2)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.show()
+    find_vert(m_array,par_ar_xy,par_ar_xz)
 
-
+#function that determines the vertex with a closeness criterion
+def find_vert(m_array,par_ar_xy,par_ar_xz):
+    for i  in range(n_cyc):
+        #cycle in range(i,2) to count each pair only once
+        for j in range(i+1,n_cyc):
+            m_array1=m_array[i][~np.all(m_array[i]==0, axis=1)]
+            m_array2=m_array[j][~np.all(m_array[j]==0, axis=1)]
+            fit_points1=np.array([m_array1[:,0],m_array1[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
+                                  m_array1[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1]])
+            fit_points2=np.array([m_array2[:,0],m_array2[:,0]*par_ar_xy[j][0]+par_ar_xy[j][1],
+                                  m_array2[:,0]*par_ar_xz[j][0]+par_ar_xz[j][1]])
+            #transpose to get (n,3) arrays
+            fit_points1=fit_points1.transpose()
+            fit_points2=fit_points2.transpose()
+            #sort by the "x" coordinate
+            fit_points1=fit_points1[np.argsort(fit_points1[:, 0])]
+            fit_points2=fit_points2[np.argsort(fit_points2[:, 0])]
+            #get the array of distances between all the points
+            t_dist=cdist(fit_points1,fit_points2)
+            print(t_dist.shape)
+            ind=np.unravel_index(np.argmin(t_dist, axis=None), t_dist.shape)
+            if t_dist.min() <=n_width:
+                print("Vertex between tracks {0} and {1} found".format(i,j))
+                print("Distance: ",t_dist.min())
+                print("Track 1 coordinate: ",fit_points1[ind[0]])
+                print("Track 2 coordinate: ",fit_points2[ind[1]])
+            else:
+                print("No vertex found")
+                    
 
 #Perform the LPC cycle
 def lpc_cycle(m0,hits,amps,N,cycle):
@@ -127,7 +185,6 @@ def lpc_cycle(m0,hits,amps,N,cycle):
     c=1
     #bandwidth parameter
     h=0.05
-    N_p=200
     #array in which to store the lpc points
     lpc_points=np.zeros((N_p,3))
     m_vec=np.zeros_like(lpc_points)
@@ -219,13 +276,70 @@ def lpc_cycle(m0,hits,amps,N,cycle):
                     count=0
     #Draw the LPC points plot
     draw_plots(lpc_points,m_vec,angles,cycle)
-    
-    return lpc_points
-    
+    return lpc_points, m_vec
+
+
+def line(x,m,b):
+    return x*m+b
+
+def fit_projections(m_vec):
+    #m_vec is already rescaled
+    #cut the non-assigned points
+    m_vec=m_vec[~np.all(m_vec==0, axis=1)]
+    #get the projections with slicings
+    x_y_pro=m_vec[:,[0,1]]
+    x_z_pro=m_vec[:,[0,2]]
+    #perform the linear fit to the xy projection
+    par_xy,cov_xy=optimize.curve_fit(line,x_y_pro[:,0],x_y_pro[:,1])
+    #perform the linear fit to the xy projection
+    par_xz,cov_xz=optimize.curve_fit(line,x_z_pro[:,0],x_z_pro[:,1])
+    #2D projection plots are in the RecoCode
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
+    img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.title("Mean points fit",size=20)
+    plt.plot(m_vec[:,0],m_vec[:,0]*par_xy[0]+par_xy[1],
+             m_vec[:,0]*par_xz[0]+par_xz[1],'r',linewidth=3)
+    plt.show()
+    print(par_xy)
+    print(par_xz)
+    return par_xy,par_xz
+
+
+def fit_3d(m_vec):
+    #take a guess for the fit parameters
+    guess=(1,1,1)
+    #cut the non-assigned points
+    m_vec=m_vec[~np.all(m_vec==0, axis=1)]
+    #return to the original scale
+    m_vec=m_vec*norm
+    #sort the array by x (z) index
+    m_vec=m_vec[np.argsort(m_vec[:, 0])]
+    params, pcov = optimize.curve_fit(line, m_vec[:,:2], m_vec[:,2], guess)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    plt.plot(m_vec[:,0],m_vec[:,1],(m_vec[:,0]*params[0]+m_vec[:,1]*params[1]+params[2]),'g')
+    print(params)
+
+   
 def draw_plots(lpc_points,m_vec,angles,cycle):
     #plot the data
     #if points are to be saved check if the folder already exists
-    lpc_cache=lpc_points
+    #lpc_cache=lpc_points
     #eliminate the unused points
     lpc_points=lpc_points[~np.all(lpc_points==0, axis=1)]
     lpc_points=lpc_points*norm
@@ -261,26 +375,26 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     plt.title("Mean points plot",size=20)
     plt.pause(0.05)
     #plt.show()
-    #Draw the plot of eigenvector angles
-    fig3 = plt.figure(figsize=(7, 7))
-    lpc_range= np.arange(angles.shape[0])
-    plt.plot(lpc_range, angles,marker='o')
-    plt.title("Feature points plot")
-    #plt.savefig('{0}/Feature_points.png'.format(folder,cycle))
-    #plt.show()
-    #Draw the heatmap of eigenvector angles
-    angles=angles[~np.all(lpc_cache==0,axis=1)]
-    fig4 = plt.figure(figsize=(7, 7))
-    ax = fig4.add_subplot(111, projection='3d')
-    ax.set_xlim((x[0],x[x.shape[0]-1]))
-    ax.set_ylim((y[0],y[y.shape[0]-1]))
-    ax.set_zlim((z[0],z[z.shape[0]-1]))
-    ax.set_xlabel('x',fontsize=14,weight='bold')
-    ax.set_ylabel('y',fontsize=14,weight='bold')
-    ax.set_zlabel('z',fontsize=14,weight='bold')
-    img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=angles,s=20,marker='s')
-    plt.colorbar(img,fraction=0.025, pad=0.07,label="Angle")
-    plt.title("Eigenvector angles plot")
+    # #Draw the plot of eigenvector angles
+    # fig3 = plt.figure(figsize=(7, 7))
+    # lpc_range= np.arange(angles.shape[0])
+    # plt.plot(lpc_range, angles,marker='o')
+    # plt.title("Feature points plot")
+    # #plt.savefig('{0}/Feature_points.png'.format(folder,cycle))
+    # #plt.show()
+    # #Draw the heatmap of eigenvector angles
+    # angles=angles[~np.all(lpc_cache==0,axis=1)]
+    # fig4 = plt.figure(figsize=(7, 7))
+    # ax = fig4.add_subplot(111, projection='3d')
+    # ax.set_xlim((x[0],x[x.shape[0]-1]))
+    # ax.set_ylim((y[0],y[y.shape[0]-1]))
+    # ax.set_zlim((z[0],z[z.shape[0]-1]))
+    # ax.set_xlabel('x',fontsize=14,weight='bold')
+    # ax.set_ylabel('y',fontsize=14,weight='bold')
+    # ax.set_zlabel('z',fontsize=14,weight='bold')
+    # img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=angles,s=20,marker='s')
+    # plt.colorbar(img,fraction=0.025, pad=0.07,label="Angle")
+    # plt.title("Eigenvector angles plot")
     #plt.savefig('{0}/Angles_plot.png'.format(folder,cycle))
     plt.show()
 
@@ -412,7 +526,7 @@ def circular_test():
 #%%Main function
 if  __name__ == "__main__":
 #define the folder in which to save the results
-    folder = input("Enter the save folder name: ") or "default"
+    folder = input("Enter the save folder name: ") or "textReco_def"
     folder = "./Plots/{0}".format(folder)
 #Opening of the pickled file
     print("++++++++++++")
@@ -481,10 +595,16 @@ if  __name__ == "__main__":
             break            
     question = True  
 #starting the track finding cycle
+    #set the number of cycles as a main variable
+    N_p=200
+    n_cyc=1
+    n_width=3
+    n_neg=5
+    n_cyc=int(input("Enter number of cycles: ") or n_cyc)
+    n_width=int(input("Enter neighborhood width: ") or n_width)
+    n_neg=int(input("Enter voxels to be neglected: ") or n_neg)
     track_cycle(X,cut_array)
-    save_results()
-    
-    
+    #proj1,proj2=fit_projections(test_array)
     
     
     
