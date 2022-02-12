@@ -16,7 +16,6 @@ import os
 import matplotlib.pyplot as plt
 #import cdist form scipy to efficiently compute distances between all pairs of points
 from scipy.spatial.distance import cdist
-import scipy.optimize as optimize
 
 #%%Functions for frequently used operations
 
@@ -84,35 +83,50 @@ def remove_old(points,points_old,amplitudes):
     return points[mask], amplitudes[mask]
 
 #%% LPC cycle functions
+
+#refined search of the center of mass 
+def find_com(hits,amps):
+    #start with the global c.o.m.
+    try:
+        #compute the c.o.m. of the remaining hits
+        c_mass=np.average(hits,axis=0,weights=amps)
+        c_mass=np.reshape(c_mass,(1,3))
+        #find the index of the hit closest to the c.o.m.
+        index=(cdist(hits,c_mass)).argmin()
+        #use this hit as the starting point
+        start=hits[index]
+    except ZeroDivisionError:
+        print("Zero Division Error!!!")
+        start=[0.,0.,0.]
+    #find the hits closer than CM_width and compute their c.o.m.
+    #cycle until the c.o.m. position stabilizes (or enough times)
+    #then use the closest point to the c.o.m. as the start of the LP
+    for i in range(30):
+        start_old=start
+        close_hits, close_amps=N_closest(start,hits,amps,CM_width)
+        c_mass=c_mass=np.average(hits,axis=0,weights=amps)
+        c_mass=np.reshape(c_mass,(1,3))
+        try:
+            index=(cdist(close_hits,c_mass)).argmin()
+            start=hits[index]
+        except ValueError:
+            start=start_old
+        print("Start: ",start*norm)
+        if (np.linalg.norm(start-start_old)<=3/norm):
+            break
+    return start
+
+
 #cycle over the hit clusters to find possible tracks
 def track_cycle(hits, amps):
     #keep the complete set of voxels to compute the lpc on
     og_hits=hits
     og_amps=amps
-    #define the arrays that will contain the points and parameters
-    #for the fits
-    par_ar_xy=np.zeros((n_cyc,2))
-    par_ar_xz=np.zeros((n_cyc,2))
     m_array=np.zeros((n_cyc,N_p,3))
     for i in range(n_cyc):
-        #plotting the cut data as a heatmap
-        plot_heatmap(hits,amps,i)
-        print("Hits shape: ",hits.shape)
-        print("Amps shape: ",amps.shape)
-        try:
-            #compute the c.o.m. of the remaining hits
-            c_mass=np.average(hits,axis=0,weights=amps)
-            c_mass=np.reshape(c_mass,(1,3))
-            #find the index of the hit closest to the c.o.m.
-            index=(cdist(hits,c_mass)).argmin()
-            #use this hit as the starting point
-            start=hits[index]
-        except ZeroDivisionError:
-            print("Zero Division Error!!!")
-            start=[0.,0.,0.]
-        print("-- Track {0} --".format(i+1))
-        print("Start = ",start*norm)
-        #perform an lpc cycle and save the resulting points (and graphs)
+        #find the starting point 
+        start=find_com(hits,amps)
+        # perform an lpc cycle and save the resulting points (and graphs)
         lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i)
         print("lpc shape: ",lpc_points.shape)
         #remove from X the hits in the vicinity of the lpc curve
@@ -120,56 +134,37 @@ def track_cycle(hits, amps):
         hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
         #return to the original scale
         m_array[i]=m_array[i]*norm
-        par_ar_xy[i],par_ar_xz[i]=fit_projections(m_array[i])
-    #plot the combined fitted data using a cycle
-    fig = plt.figure(figsize=(7, 7))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_xlim((x[0],x[x.shape[0]-1]))
-    ax.set_ylim((y[0],y[y.shape[0]-1]))
-    ax.set_zlim((z[0],z[z.shape[0]-1]))
-    ax.set_xlabel('x',fontsize=14,weight='bold')
-    ax.set_ylabel('y',fontsize=14,weight='bold')
-    ax.set_zlabel('z',fontsize=14,weight='bold')
-    plt.title("Mean points fit",size=20)
-    for i in range(n_cyc):
-        m_arrayc=m_array[i][~np.all(m_array[i]==0, axis=1)]
-        img=ax.scatter(m_arrayc[:,0],m_arrayc[:,1],
-                       m_arrayc[:,2],c=np.arange(0,m_arrayc.shape[0]),s=20,marker='s')
-        plt.plot(m_arrayc[:,0],m_arrayc[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
-                 m_arrayc[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1],'r',linewidth=3)
-    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.2)
-    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
-    plt.show()
-    find_vert(m_array,par_ar_xy,par_ar_xz)
+        parametric_fit(m_array[i],i)
+        
 
-#function that determines the vertex with a closeness criterion
-def find_vert(m_array,par_ar_xy,par_ar_xz):
-    for i  in range(n_cyc):
-        #cycle in range(i,2) to count each pair only once
-        for j in range(i+1,n_cyc):
-            m_array1=m_array[i][~np.all(m_array[i]==0, axis=1)]
-            m_array2=m_array[j][~np.all(m_array[j]==0, axis=1)]
-            fit_points1=np.array([m_array1[:,0],m_array1[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
-                                  m_array1[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1]])
-            fit_points2=np.array([m_array2[:,0],m_array2[:,0]*par_ar_xy[j][0]+par_ar_xy[j][1],
-                                  m_array2[:,0]*par_ar_xz[j][0]+par_ar_xz[j][1]])
-            #transpose to get (n,3) arrays
-            fit_points1=fit_points1.transpose()
-            fit_points2=fit_points2.transpose()
-            #sort by the "x" coordinate
-            fit_points1=fit_points1[np.argsort(fit_points1[:, 0])]
-            fit_points2=fit_points2[np.argsort(fit_points2[:, 0])]
-            #get the array of distances between all the points
-            t_dist=cdist(fit_points1,fit_points2)
-            print(t_dist.shape)
-            ind=np.unravel_index(np.argmin(t_dist, axis=None), t_dist.shape)
-            if t_dist.min() <=n_width:
-                print("Vertex between tracks {0} and {1} found".format(i,j))
-                print("Distance: ",t_dist.min())
-                print("Track 1 coordinate: ",fit_points1[ind[0]])
-                print("Track 2 coordinate: ",fit_points2[ind[1]])
-            else:
-                print("No vertex found")
+# #function that determines the vertex with a closeness criterion
+# def find_vert(m_array,par_ar_xy,par_ar_xz):
+#     for i  in range(n_cyc):
+#         #cycle in range(i,2) to count each pair only once
+#         for j in range(i+1,n_cyc):
+#             m_array1=m_array[i][~np.all(m_array[i]==0, axis=1)]
+#             m_array2=m_array[j][~np.all(m_array[j]==0, axis=1)]
+#             fit_points1=np.array([m_array1[:,0],m_array1[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
+#                                   m_array1[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1]])
+#             fit_points2=np.array([m_array2[:,0],m_array2[:,0]*par_ar_xy[j][0]+par_ar_xy[j][1],
+#                                   m_array2[:,0]*par_ar_xz[j][0]+par_ar_xz[j][1]])
+#             #transpose to get (n,3) arrays
+#             fit_points1=fit_points1.transpose()
+#             fit_points2=fit_points2.transpose()
+#             #sort by the "x" coordinate
+#             fit_points1=fit_points1[np.argsort(fit_points1[:, 0])]
+#             fit_points2=fit_points2[np.argsort(fit_points2[:, 0])]
+#             #get the array of distances between all the points
+#             t_dist=cdist(fit_points1,fit_points2)
+#             print(t_dist.shape)
+#             ind=np.unravel_index(np.argmin(t_dist, axis=None), t_dist.shape)
+#             if t_dist.min() <=n_width:
+#                 print("Vertex between tracks {0} and {1} found".format(i,j))
+#                 print("Distance: ",t_dist.min())
+#                 print("Track 1 coordinate: ",fit_points1[ind[0]])
+#                 print("Track 2 coordinate: ",fit_points2[ind[1]])
+#             else:
+#                 print("No vertex found")
 
 #Perform the LPC cycle
 def lpc_cycle(m0,hits,amps,N,cycle):
@@ -195,8 +190,9 @@ def lpc_cycle(m0,hits,amps,N,cycle):
         print("Cycle {0}".format(l))
         print("LPC point = ",lpc_points[l])
         count+=1
-        #find the N closest points to lpc_points[l]
+        #find the points of the N-wide neighborhood of lpc_points[l]
         closest, amplitudes=N_closest(lpc_points[l],hits,amps,N)
+        #remove the points featured in the previous cycle
         closest, amplitudes=remove_old(closest,closest_old,amplitudes)
         #compute the local mean
         m_vec[l],zero_flag=loc_mean(lpc_points[l],closest,amplitudes,h)
@@ -273,24 +269,18 @@ def lpc_cycle(m0,hits,amps,N,cycle):
                     count=0
     #Draw the LPC points plot
     draw_plots(lpc_points,m_vec,angles,cycle)
-
     return lpc_points, m_vec
 
-def line(x,m,b):
-    return x*m+b
-
-def fit_projections(m_vec):
+#3D fitting using the parametric equation of a straight line
+def parametric_fit(m_vec,cycle):
     #m_vec is already rescaled
     #cut the non-assigned points
     m_vec=m_vec[~np.all(m_vec==0, axis=1)]
-    #get the projections with slicings
-    x_y_pro=m_vec[:,[0,1]]
-    x_z_pro=m_vec[:,[0,2]]
-    #perform the linear fit to the xy projection
-    par_xy,cov_xy=optimize.curve_fit(line,x_y_pro[:,0],x_y_pro[:,1])
-    #perform the linear fit to the xy projection
-    par_xz,cov_xz=optimize.curve_fit(line,x_z_pro[:,0],x_z_pro[:,1])
-    #2D projection plots are in the RecoCode
+    t = np.linspace(0,1,m_vec.shape[0])
+    x_par=np.polyfit(t,m_vec[:,0],1)
+    y_par=np.polyfit(t,m_vec[:,1],1)
+    z_par=np.polyfit(t,m_vec[:,2],1)
+    #plot the fitted lines over the LPC mean curves
     fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(111, projection='3d')
     ax.set_xlim((x[0],x[x.shape[0]-1]))
@@ -303,14 +293,36 @@ def fit_projections(m_vec):
     cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
     cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
     plt.title("Mean points fit",size=20)
-    plt.plot(m_vec[:,0],m_vec[:,0]*par_xy[0]+par_xy[1],
-             m_vec[:,0]*par_xz[0]+par_xz[1],'r',linewidth=3)
-    plt.show()
-    print(par_xy)
-    print(par_xz)
-    return par_xy,par_xz
-
-
+    plt.plot(x_par[1]+t[:]*x_par[0],y_par[1]+t[:]*y_par[0],z_par[1]+t[:]*z_par[0],'r',linewidth=3)
+    plt.savefig('{0}/Event_fit_{1}.pdf'.format(save_fol,cycle))
+    #histogram of the point-line distances
+    #define the starting point for the line and the unit direction vector
+    # a=np.column_stack((x_par[1],y_par[1],z_par[1]))
+    # n=np.column_stack((x_par[0],y_par[0],z_par[0]))
+    # dist =np.zeros(m_vec.shape[0])
+    # for i in range(m_vec.shape[0]):
+    #     dist[i]=np.linalg.norm(np.cross((m_vec[i]-a),n))/np.linalg.norm(n)
+    # fig1 = plt.figure(figsize=(7, 7))
+    # plt.hist(dist,20,edgecolor='white')
+    # plt.title("Points-fit distance histogram",size=20)
+    # plt.xlabel('Point-fit distance (cm)',fontsize=16)
+    # plt.ylabel('Occurrences',fontsize=16)
+    # plt.savefig('{0}/Fit_dist_{1}.pdf'.format(save_fol,cycle))
+    # plt.show()
+    #save the fit parameters in the log file
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    with open('{0}/fit_par.txt'.format(save_fol), 'a') as s:
+        print('Cycle {0} parameters'.format(cycle),file=s)
+        print("x0: {0}".format(x_par[1]),file=s)
+        print("x1: {0}".format(x_par[0]),file=s)
+        print("y0: {0}".format(y_par[1]),file=s)
+        print("y1: {0}".format(y_par[0]),file=s)
+        print("z0: {0}".format(z_par[1]),file=s)
+        print("z1: {0}".format(z_par[0]),file=s)
+    
 #%%Drawing functions
 def draw_plots(lpc_points,m_vec,angles,cycle):
     #plot the data
@@ -431,14 +443,19 @@ def save_results():
     with open('{0}/parameters.txt'.format(save_fol), 'w') as s:
         print("File: {0}".format(file_sel),file=s)
         print("Event: {0}".format(j),file=s)
-        print("b_x: {0}".format(b_x),file=s)
-        print("b_y: {0}".format(b_y),file=s)
-        print("b_z_d: {0}".format(b_z_d),file=s)
-        print("b_z_d: {0}".format(b_z_u),file=s)
-        print("Cut fraction: {0}".format(c_frac),file=s)
+        # print("b_x_l: {0}".format(b_x_l),file=s)
+        # print("b_x_u: {0}".format(b_x_u),file=s)
+        # print("b_y_l: {0}".format(b_y_l),file=s)
+        # print("b_y_u: {0}".format(b_y_u),file=s)
+        # print("b_z_l: {0}".format(b_z_l),file=s)
+        # print("b_z_u: {0}".format(b_z_u),file=s)
+        print("C.O.M neighborhood width: {0}".format(CM_width),file=s)
+        print("Lower cut fraction: {0}".format(c_frac_l),file=s)
+        print("Upper cut fraction: {0}".format(c_frac_u),file=s)
         print("Cycles: {0}".format(n_cyc),file=s)
-        print("Neighborhood width: {0}".format(n_width),file=s)
+        print("LPC Neighborhood width: {0}".format(n_width),file=s)
         print("Neglected {0} closest when repeating".format(n_neg),file=s)
+
 
 #%%GUI setup
 sg.theme('DarkAmber')    # Keep things interesting for your users
@@ -481,10 +498,10 @@ if  __name__ == "__main__":
             #use og_array to get the ize of the volume
             key_list=list(dictionary[0])
             og_array=np.array(dictionary[0][key_list[0]]['amplitude'])
-            lpc_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus),
-                                              sg.Input(file_sel,font=font_corpus),
-                                              sg.FileBrowse(key="-File-",font=font_corpus),
-                                              sg.Button("Open file",font=font_corpus)],
+            lpc_layout = [[sg.T("")], #[sg.Text("Choose a file: ",font=font_corpus),
+                                              #sg.Input(file_sel,font=font_corpus),
+                                              #sg.FileBrowse(key="-File-",font=font_corpus),
+                                              #sg.Button("Open file",font=font_corpus)],
                           [sg.Text("Save folder: ",font=font_corpus),
                            sg.Input(font=font_corpus),
                            sg.FolderBrowse(key="-Fol-",
@@ -493,18 +510,27 @@ if  __name__ == "__main__":
                           [sg.Text('Enter event',font=font_title)],
                           [sg.Combo(np.arange(len(dictionary)),default_value='0',font=font_corpus,key='-IN0-')],
                           [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
-                          [TextLabel('b_x'),sg.Input('10',key='-IN1-',justification='l',font=font_corpus,size=(4))],
-                          [TextLabel('b_y'),sg.Input('10',key='-IN2-',justification='l',font=font_corpus,size=(4))],
-                          [TextLabel('b_z_d'),sg.Slider(range=(0,og_array.shape[2]),
-                                                        default_value ='0',orientation = 'horizontal',key='-IN3-',font=font_corpus)],
-                          [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[2]),
-                                                        default_value ='130',orientation = 'horizontal',key='-IN4-',font=font_corpus)],
-                          [TextLabel('c_frac'),sg.Input('0.90',key='-IN5-',justification='l',font=font_corpus,size=(4))],
+                          # [TextLabel('b_x_l'),sg.Slider(range=(0,og_array.shape[2]),
+                          #                               default_value ='0',orientation = 'horizontal',key='-IN1L-',font=font_corpus)],
+                          # [TextLabel('b_x_u'),sg.Slider(range=(0,og_array.shape[2]),
+                          #                               default_value=og_array.shape[2],orientation = 'horizontal',key='-IN1U-',font=font_corpus)],
+                          # [TextLabel('b_y_l'),sg.Slider(range=(0,og_array.shape[1]),
+                          #                               default_value ='0',orientation = 'horizontal',key='-IN2L-',font=font_corpus)],
+                          # [TextLabel('b_y_u'),sg.Slider(range=(0,og_array.shape[1]),
+                          #                               default_value =og_array.shape[1],orientation = 'horizontal',key='-IN2U-',font=font_corpus)],
+                          # [TextLabel('b_z_l'),sg.Slider(range=(0,og_array.shape[0]),
+                          #                               default_value ='0',orientation = 'horizontal',key='-IN3L-',font=font_corpus)],
+                          # [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[0]),
+                          #                               default_value =og_array.shape[0],orientation = 'horizontal',key='-IN3U-',font=font_corpus)],
+                          [TextLabel('Lower amp. cut'),sg.Input('0.96',key='-IN5L-',justification='l',font=font_corpus,size=(4))],
+                          [TextLabel('Upper amp. cut'),sg.Input('1.',key='-IN5U-',justification='l',font=font_corpus,size=(4))],
                           [[sg.T("")],sg.Button('Plot',font=font_corpus)],
                           [[sg.T("")],sg.Text('Enter LPC parameters',font=font_title)],
+                          [TextLabel('CM width'),sg.Slider(range=(1,20),
+                                                          default_value ='10',orientation = 'horizontal',key='-INCM-',font=font_corpus)],
                           [TextLabel('Cycles'),sg.Input('1',key='-IN6-',justification='l',font=font_corpus, size=(3))],
                           [TextLabel('N_width'),sg.Slider(range=(1,10),
-                                                          default_value ='3',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
+                                                          default_value ='6',orientation = 'horizontal',key='-IN7-',font=font_corpus)],
                           [TextLabel('Closest'),sg.Slider(range=(1,10),
                                                           default_value ='3',orientation = 'horizontal',key='-IN8-',font=font_corpus)],
                           [[sg.T("")],[sg.Button('Start LPC',font=font_corpus),sg.Button("Save Parameters",font=font_corpus)],
@@ -512,7 +538,6 @@ if  __name__ == "__main__":
             proc_window = sg.Window('Control Panel', lpc_layout)
             browse_window.Close()
             while True:
-
 
                 event,values = proc_window.read()
                 save_fol=str(values.get('-Fol-'))
@@ -526,28 +551,33 @@ if  __name__ == "__main__":
                     og_array+=np.array(ev)
                 #og_array=np.swapaxes(og_array, 0, 2)
                 array=np.empty_like(og_array)
-                b_x=int(values.get('-IN1-'))
-                b_y=int(values.get('-IN2-'))
-                b_z_d=int(values.get('-IN3-'))
-                b_z_u=int(values.get('-IN4-'))
-                c_frac=float(values.get('-IN5-'))
-                array=og_array[b_x:(array.shape[0]-b_x),b_y:(array.shape[1]-b_y),b_z_d:(b_z_u)]
+                # b_x_l=int(values.get('-IN1L-'))
+                # b_x_u=int(values.get('-IN1U-'))
+                # b_y_l=int(values.get('-IN2L-'))
+                # b_y_u=int(values.get('-IN2U-'))
+                # b_z_l=int(values.get('-IN3L-'))
+                # b_z_u=int(values.get('-IN3U-'))
+                c_frac_l=float(values.get('-IN5L-'))
+                c_frac_u=float(values.get('-IN5U-'))
+                array=og_array[5:(array.shape[0]-5),5:(array.shape[1]-5),5:(array.shape[2]-5)]
                 #define the complete coordinate arrays
-                x= np.arange(0.,og_array.shape[0],1)
-                y=np.arange(0.,og_array.shape[1],1)
-                z=np.arange(0.,og_array.shape[2],1)
+                x= np.arange(-og_array.shape[2]/2,og_array.shape[2]/2,1)
+                y=np.arange(-og_array.shape[1]/2,og_array.shape[1]/2,1)
+                z=np.arange(-og_array.shape[0]/2,og_array.shape[0]/2,1)
                 #rescaling the amplitudes
                 array=array-np.min(array)
                 array = array/np.max(array)
-                cut_array=array[array>=c_frac]
-                x_cut=np.nonzero(array>=c_frac)[0]+b_x
-                y_cut=np.nonzero(array>=c_frac)[1]+b_y
-                z_cut=np.nonzero(array>=c_frac)[2]+b_z_d
+                #perform the amplitude cuts on amp. and coord. arrays
+                cut_array=array[(array>=c_frac_l) & (array<=c_frac_u)]
+                x_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[2]
+                y_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[1]
+                z_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[0]
                 #defining the matrix of cut coordinates
                 #reshaping the index vectors to get the right shape for X
-                x_cut=x_cut.transpose()+0.5
-                y_cut=y_cut.transpose()+0.5
-                z_cut=z_cut.transpose()+0.5
+                x_cut=x_cut.transpose()+5.5-og_array.shape[2]/2
+                y_cut=y_cut.transpose()+5.5-og_array.shape[1]/2
+                #flip an axis to get the right cartesian triplet
+                z_cut=-(z_cut.transpose()+5.5-og_array.shape[0]/2)
                 cut_array=cut_array.transpose()
                 #rows for the events, columns for the coordinates
                 X=np.column_stack((x_cut,y_cut,z_cut))
@@ -569,6 +599,7 @@ if  __name__ == "__main__":
                         print("Select a valid folder!")
                         continue
                 elif event=='Start LPC':
+                    CM_width=int(values.get('-INCM-'))
                     n_cyc=int(values.get('-IN6-'))
                     n_width=int(values.get('-IN7-'))
                     n_neg=int(values.get('-IN8-'))
