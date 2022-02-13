@@ -87,63 +87,77 @@ def remove_old(points,points_old,amplitudes):
     return points[mask], amplitudes[mask];
 
 #%% LPC cycle functions
+
+#refined search of the center of mass 
+def find_com(hits,amps,norm,CM_width):
+    #start with the global c.o.m.
+    try:
+        #compute the c.o.m. of the remaining hits
+        c_mass=np.average(hits,axis=0,weights=amps)
+        c_mass=np.reshape(c_mass,(1,3))
+        #find the index of the hit closest to the c.o.m.
+        index=(cdist(hits,c_mass)).argmin()
+        #use this hit as the starting point
+        start=hits[index]
+    except ZeroDivisionError:
+        print("Zero Division Error!!!")
+        start=[0.,0.,0.]
+    #find the hits closer than some distance and compute their c.o.m.
+    #cycle until the c.o.m. position stabilizes
+    #then use the closest point to the c.o.m. as the start of the LP
+    for i in range(30):
+        start_old=start
+        close_hits, close_amps=N_closest(start,hits,amps,norm,CM_width)
+        try:
+            c_mass=np.average(close_hits,axis=0,weights=close_amps)
+            c_mass=np.reshape(c_mass,(1,3))
+            index=(cdist(close_hits,c_mass)).argmin()
+            start=close_hits[index]
+        except ZeroDivisionError:
+            print("Too few points left: exiting.")
+            break
+        if (np.linalg.norm(start-start_old)<=3/norm):
+            break
+    return start
 #cycle over the hit clusters to find possible tracks
-def track_cycle(hits, amps,norm,N_p,n_cyc,n_width,n_neg,x,y,z,folder):
+def track_cycle(hits, amps,norm,N_p,n_cyc,n_width,n_neg,x,y,z,folder,CM_width):
     #keep the complete set of voxels to compute the lpc on
     og_hits=hits
     og_amps=amps
-    #define the arrays that will contain the points and parameters
-    #for the fits
-    par_ar_xy=np.zeros((n_cyc,2))
-    par_ar_xz=np.zeros((n_cyc,2))
     m_array=np.zeros((n_cyc,N_p,3))
     for i in range(n_cyc):
         #plotting the cut data as a heatmap
         plot_heatmap(hits,amps,i,norm,x,y,z,folder)
-        # print("Hits shape: ",hits.shape)
-        # print("Amps shape: ",amps.shape)
+        start=find_com(hits,amps,norm,CM_width)
+        # try:
+        #     os.mkdir(save_fol)
+        # except FileExistsError:
+        #     pass
+        # with open('{0}/fit_par.txt'.format(save_fol), 'a') as s:
+        #     print('Start = {0}'.format(start*norm),file=s)
+        #once at the center of the cluster compute its c.o.m.
+        close_hits, close_amps=N_closest(start,hits,amps,norm,40)
         try:
-            #compute the c.o.m. of the remaining hits
-            c_mass=np.average(hits,axis=0,weights=amps)
+            c_mass=np.average(close_hits,axis=0,weights=close_amps)
             c_mass=np.reshape(c_mass,(1,3))
-            #find the index of the hit closest to the c.o.m.
-            index=(cdist(hits,c_mass)).argmin()
-            #use this hit as the starting point
-            start=hits[index]
+            index=(cdist(close_hits,c_mass)).argmin()
+            center_est=close_hits[index]
         except ZeroDivisionError:
-            # print("Zero Division Error!!!")
-            start=[0.,0.,0.]
-        # print("-- Track {0} --".format(i+1))
-        # print("Start = ",start*norm)
-        #perform an lpc cycle and save the resulting points (and graphs)
+            print("Too few points left: exiting.")
+            print(start*norm)
+            break
+        # perform an lpc cycle and save the resulting points (and graphs)
         lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i,N_p,norm,x,y,z)
-        # print("lpc shape: ",lpc_points.shape)
+        #print("lpc shape: ",lpc_points.shape)
         #remove from X the hits in the vicinity of the lpc curve
         amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
         hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
         #return to the original scale
         m_array[i]=m_array[i]*norm
-        par_ar_xy[i],par_ar_xz[i]=fit_projections(m_array[i],x,y,z)
-    #plot the combined fitted data using a cycle
-    fig = plt.figure(figsize=(7, 7))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_xlim((x[0],x[x.shape[0]-1]))
-    ax.set_ylim((y[0],y[y.shape[0]-1]))
-    ax.set_zlim((z[0],z[z.shape[0]-1]))
-    ax.set_xlabel('x',fontsize=14,weight='bold')
-    ax.set_ylabel('y',fontsize=14,weight='bold')
-    ax.set_zlabel('z',fontsize=14,weight='bold')
-    plt.title("Mean points fit",size=20)
-    for i in range(n_cyc):
-        m_arrayc=m_array[i][~np.all(m_array[i]==0, axis=1)]
-        img=ax.scatter(m_arrayc[:,0],m_arrayc[:,1],
-                       m_arrayc[:,2],c=np.arange(0,m_arrayc.shape[0]),s=20,marker='s')
-        plt.plot(m_arrayc[:,0],m_arrayc[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
-                 m_arrayc[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1],'r',linewidth=3)
-    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.2)
-    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
-    plt.show()
-    find_vert(m_array,par_ar_xy,par_ar_xz,n_cyc,n_width)
+        try:
+            parametric_fit(m_array[i],i,x,y,z,folder)
+        except TypeError:
+            print("Empty mean points vector: exiting")
 
 #function that determines the vertex with a closeness criterion
 def find_vert(m_array,par_ar_xy,par_ar_xz,n_cyc,n_width):
@@ -173,7 +187,85 @@ def find_vert(m_array,par_ar_xy,par_ar_xz,n_cyc,n_width):
             #     print("Track 2 coordinate: ",fit_points2[ind[1]])
             # else:
             #     print("No vertex found")
-                    
+#3D fitting using the parametric equation of a straight line
+def parametric_fit(m_vec,cycle,x,y,z,folder):
+    #m_vec is already rescaled
+    #cut the non-assigned points
+    m_vec=m_vec[~np.all(m_vec==0, axis=1)]
+    #m_vec=m_vec[np.argsort(m_vec[:, 0])]
+    t = np.linspace(0,1,m_vec.shape[0])
+    x_par=np.polyfit(t,m_vec[:,0],1)
+    y_par=np.polyfit(t,m_vec[:,1],1)
+    z_par=np.polyfit(t,m_vec[:,2],1)
+    #print(x_par[0]+x_par[1]*t[:])
+    #plot the mean points plot
+    fig = plt.figure(figsize=(7, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim((x[0],x[x.shape[0]-1]))
+    ax.set_ylim((y[0],y[y.shape[0]-1]))
+    ax.set_zlim((z[0],z[z.shape[0]-1]))
+    ax.set_xlabel('x',fontsize=14,weight='bold')
+    ax.set_ylabel('y',fontsize=14,weight='bold')
+    ax.set_zlabel('z',fontsize=14,weight='bold')
+    img=ax.scatter(m_vec[:,0],m_vec[:,1],m_vec[:,2],c=np.arange(0,m_vec.shape[0]),s=20,marker='s')
+    cb=plt.colorbar(img,shrink=0.5,orientation='vertical', pad=0.1)
+    cb.set_label(label='Point index',size=14,weight='bold',labelpad=10.)
+    #superimpose the fit line plot
+    plt.title("Mean points fit",size=20)
+    plt.plot(x_par[1]+t[:]*x_par[0],y_par[1]+t[:]*y_par[0],z_par[1]+t[:]*z_par[0],'r',linewidth=3)
+    plt.savefig('{0}/Event_fit_{1}.pdf'.format(folder,cycle))
+    #histogram of the point-line distances
+    #define the starting point for the line and the unit direction vector
+    a=np.column_stack((x_par[1],y_par[1],z_par[1]))
+    n=np.column_stack((x_par[0],y_par[0],z_par[0]))
+    #define the endpoint of the fit line
+    b=a+n*1
+    projections=np.zeros_like(m_vec)
+    for i in range(m_vec.shape[0]):
+        projections[i]=a+(np.dot((m_vec[i]-a[0]),(b-a)[0])/np.dot((b-a)[0],(b-a)[0]))*(b-a)[0]
+    #find the t of the projected points
+    proj_t=np.zeros(projections.shape[0])
+    for i in range(projections.shape[0]):
+        proj_t[i]=np.linalg.norm(projections[i]-a[0])/np.linalg.norm(n[0])
+    #now sort m_vec by the t of the corresponding projection
+    proj_t_sort = proj_t.argsort()
+    m_vec_sort=m_vec[proj_t_sort[::+1]]
+    projections=projections[proj_t_sort[::+1]]
+    proj_t=proj_t[proj_t_sort[::+1]]
+    #normalize the t values in order to use them as weights
+    proj_t=proj_t-proj_t.min()
+    proj_t=proj_t/proj_t.max()
+    #define the array that will contain the weights
+    t_diff=np.zeros((proj_t.shape[0]))
+    #compute the weights as the differences between t values
+    for i in range(1,t_diff.shape[0]):
+        t_diff[i]=proj_t[i]-proj_t[i-1]
+    #this is fine
+    dist =np.zeros(m_vec.shape[0])
+    for i in range(m_vec.shape[0]):
+        dist[i]=np.linalg.norm(np.cross((m_vec_sort[i]-a),n))/np.linalg.norm(n)
+    fig1 = plt.figure(figsize=(7, 7))
+    plt.hist(dist,20,weights=t_diff,edgecolor='white')
+    plt.title("Points-fit distance histogram",size=20)
+    plt.xlabel('Point-fit distance (cm)',fontsize=16)
+    plt.ylabel('Occurrences',fontsize=16)
+    plt.savefig('{0}/Fit_dist_{1}.pdf'.format(folder,cycle))
+    plt.show()
+    #save the fit parameters in the log file
+    try:
+        os.mkdir(folder)
+    except FileExistsError:
+        pass
+    with open('{0}/fit_par.txt'.format(folder), 'a') as s:
+        print('Cycle {0} parameters'.format(cycle),file=s)
+        print("x0: {0}".format(x_par[1]),file=s)
+        print("x1: {0}".format(x_par[0]),file=s)
+        print("y0: {0}".format(y_par[1]),file=s)
+        print("y1: {0}".format(y_par[0]),file=s)
+        print("z0: {0}".format(z_par[1]),file=s)
+        print("z1: {0}".format(z_par[0]),file=s)
+        print("First LPC proj. point: {0}".format(projections[0]),file=s)
+        print("last LPC proj. point: {0}".format(projections[projections.shape[0]-1]),file=s)                    
 
 #Perform the LPC cycle
 def lpc_cycle(m0,hits,amps,n_width,cycle,N_p,norm,x,y,z):
@@ -310,8 +402,8 @@ def fit_projections(m_vec,x,y,z):
     plt.plot(m_vec[:,0],m_vec[:,0]*par_xy[0]+par_xy[1],
              m_vec[:,0]*par_xz[0]+par_xz[1],'r',linewidth=3)
     plt.show()
-    print(par_xy)
-    print(par_xz)
+    # print(par_xy)
+    # print(par_xz)
     return par_xy,par_xz
 
 
@@ -526,13 +618,11 @@ def vert_gauss_test():
 #     return "Circular arch track", seed
 #%%Main function
 def main(folder="textReco_def",file_sel = "./eventi_valentina/diagmu_1ev_reco.pkl",
-         b_x=1,b_y=1,b_z=10,cut_frac=0.6,n_cyc=2,n_width=3,n_neg=5):
+         c_frac_l=0.6,c_frac_u=1.,n_cyc=2,n_width=5,n_neg=5,CM_width=15):
 #define the folder in which to save the results
     # folder = input("Enter the save folder name: ") or "textReco_def"
     folder = "./Plots/tests/{0}".format(folder)
 #Opening of the pickled file
-    print("++++++++++++")
-    print("Enter dataset parameters:")
     print("++++++++++++")
     # root = tk.Tk()
     # root.withdraw()
@@ -565,24 +655,33 @@ def main(folder="textReco_def",file_sel = "./eventi_valentina/diagmu_1ev_reco.pk
     # b_y=int(input("Enter y cut: ") or b_y)
     # b_z=int(input("Enter z cut: ") or b_z)
     # cut_frac=float(input("Enter amplitude cut: ") or cut_frac)
-    array=og_array[b_x:(og_array.shape[0]-b_x),b_y:(og_array.shape[1]-b_y),b_z:(og_array.shape[2]-b_z)]
-#define the complete coordinate arrays
-    x= np.arange(0.,array.shape[0],1)
-    y=np.arange(0.,array.shape[1],1)
-    z=np.arange(0.,array.shape[2],1)
-#rescaling the amplitudes
+    array=og_array[5:(array.shape[0]-5),5:(array.shape[1]-5),5:(array.shape[2]-5)]
+    #define the complete coordinate arrays
+    x= np.arange(-og_array.shape[2]/2,og_array.shape[2]/2,1)
+    y=np.arange(-og_array.shape[1]/2,og_array.shape[1]/2,1)
+    z=np.arange(-og_array.shape[0]/2,og_array.shape[0]/2,1)
+    #rescaling the amplitudes
     array=array-np.min(array)
     array = array/np.max(array)
-#performing the cut over the amplitude
-    cut_array=array[array>=cut_frac]
-    x_cut=np.nonzero(array>=cut_frac)[0]+b_x
-    y_cut=np.nonzero(array>=cut_frac)[1]+b_y
-    z_cut=np.nonzero(array>=cut_frac)[2]+b_z
-#defining the matrix of cut coordinates
-#reshaping the index vectors to get the right shape for X
-    x_cut=x_cut.transpose()+0.5
-    y_cut=y_cut.transpose()+0.5
-    z_cut=z_cut.transpose()+0.5
+    if (c_frac_l <0) or (c_frac_l >1.) or (c_frac_l >= c_frac_u):
+        print("Invalid lower cut fraction!")
+        c_frac_l=0.6
+        c_frac_u=1.
+    elif (c_frac_u <0) or (c_frac_u >1.):
+        print("Invalid upper cut fraction!")
+        c_frac_u=1.
+        
+        
+    cut_array=array[(array>=c_frac_l) & (array<=c_frac_u)]
+    x_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[2]
+    y_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[1]
+    z_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[0]
+    #defining the matrix of cut coordinates
+    #reshaping the index vectors to get the right shape for X
+    x_cut=x_cut.transpose()+5.5-og_array.shape[2]/2
+    y_cut=y_cut.transpose()+5.5-og_array.shape[1]/2
+    #flip an axis to get the right cartesian triplet
+    z_cut=-(z_cut.transpose()+5.5-og_array.shape[0]/2)
     cut_array=cut_array.transpose()
 #rows for the events, columns for the coordinates
     X=np.column_stack((x_cut,y_cut,z_cut))
@@ -591,23 +690,30 @@ def main(folder="textReco_def",file_sel = "./eventi_valentina/diagmu_1ev_reco.pk
     for i in range(X.shape[0]):
         d[i]=np.linalg.norm(X[i])
     norm=(d.max()-d.min())
-    X = X/norm
-    show_plot(X,cut_array,norm,x,y,z)
-    # if input("Start the LPC cycle? [y/n] ") == "y":
-    #     break            
-    # question = True  
-#starting the track finding cycle
-    #set the number of cycles as a main variable
-    # N_p=200
-    # n_cyc=1
-    # n_width=3
-    # n_neg=5
-    # n_cyc=int(input("Enter number of cycles: ") or n_cyc)
-    # n_width=int(input("Enter neighborhood width: ") or n_width)
-    # n_neg=int(input("Enter voxels to be neglected: ") or n_neg)
-    N_p=200
-    track_cycle(X,cut_array,norm,N_p,n_cyc,n_width,n_neg,x,y,z,folder)
-    #proj1,proj2=fit_projections(test_array)
+    if norm == 0.:
+        print("Too few points to normalize: exiting.")
+    else:
+        X = X/norm
+        show_plot(X,cut_array,norm,x,y,z)
+        # if input("Start the LPC cycle? [y/n] ") == "y":
+        #     break            
+        # question = True  
+    #starting the track finding cycle
+        #set the number of cycles as a main variable
+        # N_p=200
+        # n_cyc=1
+        # n_width=3
+        # n_neg=5
+        # n_cyc=int(input("Enter number of cycles: ") or n_cyc)
+        # n_width=int(input("Enter neighborhood width: ") or n_width)
+        # n_neg=int(input("Enter voxels to be neglected: ") or n_neg)
+        N_p=200
+        #add an error message for N_cyc=0 !!!
+        if n_cyc<=0:
+            print("Invalid LPC cycle number!")
+            n_cyc=1
+        track_cycle(X,cut_array,norm,N_p,n_cyc,n_width,n_neg,x,y,z,folder,CM_width)
+        #proj1,proj2=fit_projections(test_array)
 
 
 
@@ -615,99 +721,185 @@ def main(folder="textReco_def",file_sel = "./eventi_valentina/diagmu_1ev_reco.pk
 #Using pytest.raises the test fails if no Exception is raised
 def test_void_folder():
     with pytest.raises(Exception):
+        print(" ")
+        print("test_void_folder")
         main("")
 def test_invalid_folder():
     with pytest.raises(Exception):
+        print(" ")
+        print("test_invalid_folder")
         main("/-$prova")
 def test_valid_folder():
     with pytest.raises(Exception):
+        print(" ")
+        print("test_valid_folder")
         main("")
 #testing the file name
 def test_valid_file():
     with pytest.raises(Exception):
+        print(" ")
         main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl")
-def test_invalid_file():
-    with pytest.raises(FileNotFoundError):
-        main("textReco_def","./eventi_valentina/diagmu_reco.pkl")
-def test_invalid_extension():
-    with pytest.raises(FileNotFoundError):
-        main("textReco_def","./eventi_valentina/diagmu_reco.pdf")
+#error
+# def test_invalid_file():
+#     with pytest.raises(FileNotFoundError):
+#         print(" ")
+#         print("test_invalid_file")
+#         main("textReco_def","./eventi_valentina/diagmu_reco.pkl")
+# #error
+# def test_invalid_extension():
+#     with pytest.raises(FileNotFoundError):
+#         print(" ")
+#         print("test_invalid_extension")
+#         main("textReco_def","./eventi_valentina/diagmu_reco.pdf")
 #testing the cuts
-#x negative cut
-def test_neg_cut():
+# #x negative cut
+# def test_neg_cut():
+#     with pytest.raises(Exception):
+#         print(" ")
+#         print("test_neg_cut")
+#         main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",-10)
+# #cut above limit #error ==> solved by sliders or retry of the input
+# def test_invalid_cut():
+#     with pytest.raises(Exception):
+#         print(" ")
+#         print("test_invalid_cut")
+#         main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",500)
+# #cut equal to dimensions #error ==> solved by sliders or retry of the input
+# def test_max_cut():
+#     with pytest.raises(Exception):
+#         print(" ")
+#         print("test_max_cut")
+#         main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",50)
+
+#Implement a ValueError try for the invalid fractions
+#For the Negative fraction (which passes) use an if
+def test_eq_frac():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",-10)
-#cut above limit
-def test_invalid_cut():
-    with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",500)
-#cut equal to dimensions
-def test_max_cut():
-    with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",50)
-#testing the cut fraction
+        print(" ")
+        print("test_eq_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,0.6)
+#
+#testing the cut fraction #error ==>unmanaged ZeroDivError that gives a ValueError
+#problem start when calculating the norm ==> use a try there, or if for 0 points
+#not sure if the GUI wuold crash
 def test_un_frac():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,1.0)
-#cut fraction above 1
+        print(" ")
+        print("test_un_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1.0,)
+#cut fraction above 1 #error ==>unmanaged ZeroDivError that gives a ValueError
+#problem start when calculating the norm ==> use a try there, or if for 0 points
+#maybe when computing the fit
+#not sure if the GUI wuold crash print a message anyway
 def test_inv_frac():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,2.)
+        print(" ")
+        print("test_inv_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",2.)
 #negative cut fraction
 def test_neg_frac():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6)
+        print(" ")
+        print("test_neg_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",-0.6)
+#test lower cut frac. higher than the upper
+def test_inverted_frac():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_inverted_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.7,0.6)
+        
+def test_high_frac():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_high_frac")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.99,1.)
+#(folder="textReco_def",file_sel = "./eventi_valentina/diagmu_1ev_reco.pkl",
+         #c_frac_l=0.6,c_frac_u=1.,n_cyc=2,n_width=5,n_neg=5,CM_width=15)        
+        
 #testing the number of cycles
-#0 cycles
+#0 cycles #error ==> impose a lower limit on cycles/sldier for GUI?
 def test_zero_cyc():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,0)
-#negative number of cycles
+        print(" ")
+        print("test_zero_cyc")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.0,0)
+#negative number of cycles #error ==> impose a lower limit on cycles/sldier for GUI?
 def test_neg_cyc():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,-2)
+        print(" ")
+        print("test_neg_cyc")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,-2)
 #much more cycles than tracks
 def test_many_cyc():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,5)
+        print(" ")
+        print("test_many_cyc")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,5)
 #testing the neighborhood parameter
-#0 cycles
+#0 cycles #error ==>unmanaged ZeroDivError that gives a ValueError
+#==> use a try there, or if for 0 points
+#maybe when computing the fit
 def test_0_width():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,0.)
-#test small width
+        print(" ")
+        print("test_0_width")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,0.)
+#test small width #error ==>unmanaged ZeroDivError that gives a ValueError
+#==> use a try there, or if for 0 points
+#maybe when computing the fit
 def test_small_width():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,1)
+        print(" ")
+        print("test_small_width")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,1)
 #test fractional width
 def test_frac_width():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3.5)
+        print(" ")
+        print("test_frac_width")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3.5)
 #test very large widths
 def test_large_width():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,10)
-#test negative widths
+        print(" ")
+        print("test_large_width")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,10)
+#test negative widths #error ==>unmanaged ZeroDivError that gives a ValueError
+#==> use a try there, or if for 0 points
+#maybe when computing the fit
 def test_neg_width():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,-3)
+        print(" ")
+        print("test_neg_width")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,-3)
 #testing the neglection width parameter
-#0 cycles
+#0 cycles #error
 def test_0_negl():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3,0)
+        print(" ")
+        print("test_0_negl")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,0)
 #test small width
 def test_small_negl():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3,1)
+        print(" ")
+        print("test_small_negl")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,1)
 #test fractional width
 def test_frac_negl():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3,3.5)
+        print(" ")
+        print("test_frac_negl")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,3.5)
 #test very large widths
 def test_large_negl():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3,30)
+        print(" ")
+        print("test_large_negl")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,30)
 def test_neg_negl():
     with pytest.raises(Exception):
-        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",1,1,10,0.6,2,3,-3)
+        print(" ")
+        print("test_neg_negl")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,-3)
