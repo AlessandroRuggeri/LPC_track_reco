@@ -903,3 +903,29 @@ def test_neg_negl():
         print(" ")
         print("test_neg_negl")
         main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,3,-3)
+        
+#testing the C.O.M neighborhood width
+#0 cm width
+def test_0_com():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_0_com")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,5,5,0)
+#negative width
+def test_neg_com():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_neg_com")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,5,5,-20)
+#small width
+def test_small_com():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_small_com")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,5,5,1.)
+def test_large_com():
+    with pytest.raises(Exception):
+        print(" ")
+        print("test_large_com")
+        main("textReco_def","./eventi_valentina/diagmu_1ev_reco.pkl",0.6,1.,2,5,5,80)
+        
