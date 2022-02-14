@@ -104,14 +104,14 @@ def find_com(hits,amps):
     for i in range(30):
         start_old=start
         close_hits, close_amps=N_closest(start,hits,amps,CM_width)
-        c_mass=c_mass=np.average(hits,axis=0,weights=amps)
-        c_mass=np.reshape(c_mass,(1,3))
         try:
+            c_mass=np.average(close_hits,axis=0,weights=close_amps)
+            c_mass=np.reshape(c_mass,(1,3))
             index=(cdist(close_hits,c_mass)).argmin()
-            start=hits[index]
-        except ValueError:
-            start=start_old
-        print("Start: ",start*norm)
+            start=close_hits[index]
+        except ZeroDivisionError:
+            print("Too few points left: exiting.")
+            break
         if (np.linalg.norm(start-start_old)<=3/norm):
             break
     return start
@@ -134,7 +134,10 @@ def track_cycle(hits, amps):
         hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
         #return to the original scale
         m_array[i]=m_array[i]*norm
-        parametric_fit(m_array[i],i)
+        try:
+            parametric_fit(m_array[i],i)
+        except TypeError:
+            print("Empty mean points vector: exiting")
         
 
 # #function that determines the vertex with a closeness criterion
@@ -449,9 +452,9 @@ def save_results():
         # print("b_y_u: {0}".format(b_y_u),file=s)
         # print("b_z_l: {0}".format(b_z_l),file=s)
         # print("b_z_u: {0}".format(b_z_u),file=s)
-        print("C.O.M neighborhood width: {0}".format(CM_width),file=s)
         print("Lower cut fraction: {0}".format(c_frac_l),file=s)
         print("Upper cut fraction: {0}".format(c_frac_u),file=s)
+        print("C.O.M neighborhood width: {0}".format(CM_width),file=s)
         print("Cycles: {0}".format(n_cyc),file=s)
         print("LPC Neighborhood width: {0}".format(n_width),file=s)
         print("Neglected {0} closest when repeating".format(n_neg),file=s)
@@ -542,7 +545,11 @@ if  __name__ == "__main__":
                 event,values = proc_window.read()
                 save_fol=str(values.get('-Fol-'))
                 j=int(values.get('-IN0-'))
-                key_list=list(dictionary[j])
+                try:
+                    key_list=list(dictionary[j])
+                except KeyError:
+                    print("Invalid event number!")
+                    continue
                 ev=dictionary[j][key_list[0]]['amplitude']
                 og_array=np.array(ev)
                 #convert the event dic. to numpy array summing over the cameras
@@ -567,6 +574,13 @@ if  __name__ == "__main__":
                 #rescaling the amplitudes
                 array=array-np.min(array)
                 array = array/np.max(array)
+                #skip cycle if the cut values are not valid
+                if (c_frac_l <0) or (c_frac_l >1.) or (c_frac_l >= c_frac_u):
+                    print("Invalid lower cut fraction!")
+                    continue
+                elif (c_frac_u <0) or (c_frac_u >1.):
+                    print("Invalid upper cut fraction!")
+                    continue
                 #perform the amplitude cuts on amp. and coord. arrays
                 cut_array=array[(array>=c_frac_l) & (array<=c_frac_u)]
                 x_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[2]
@@ -604,7 +618,11 @@ if  __name__ == "__main__":
                     n_width=int(values.get('-IN7-'))
                     n_neg=int(values.get('-IN8-'))
                     try:
-                        track_cycle(X,cut_array)
+                        if n_cyc<=0:
+                            print("Invalid LPC cycle number!")
+                            continue
+                        else:
+                            track_cycle(X,cut_array)
                     except OSError:
                         print("Select a valid folder!")
                         continue
