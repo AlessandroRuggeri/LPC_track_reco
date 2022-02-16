@@ -40,9 +40,9 @@ def loc_mean(u,closest,amplitudes,h):
     try:
         m=np.average(closest,axis=0,weights=weights)
     except ZeroDivisionError:
-        print("Zero Division Error!!!")
-        print("The weights:")
-        print(weights)
+        # print("Zero Division Error!!!")
+        # print("The weights:")
+        # print(weights)
         m=[0.,0.,0.]
         zero_flag=True
     return m, zero_flag
@@ -96,7 +96,7 @@ def find_com(hits,amps):
         #use this hit as the starting point
         start=hits[index]
     except ZeroDivisionError:
-        print("Zero Division Error!!!")
+        print("-- Zero Division Error --")
         start=[0.,0.,0.]
     #find the hits closer than CM_width and compute their c.o.m.
     #cycle until the c.o.m. position stabilizes (or enough times)
@@ -110,7 +110,7 @@ def find_com(hits,amps):
             index=(cdist(close_hits,c_mass)).argmin()
             start=close_hits[index]
         except ZeroDivisionError:
-            print("Too few points left: exiting.")
+            print("-- Too few points left: exiting --")
             break
         if (np.linalg.norm(start-start_old)<=3/norm):
             break
@@ -123,51 +123,35 @@ def track_cycle(hits, amps):
     og_hits=hits
     og_amps=amps
     m_array=np.zeros((n_cyc,N_p,3))
-    for i in range(n_cyc):
-        #find the starting point 
-        start=find_com(hits,amps)
-        # perform an lpc cycle and save the resulting points (and graphs)
-        lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i)
-        print("lpc shape: ",lpc_points.shape)
-        #remove from X the hits in the vicinity of the lpc curve
-        amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
-        hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
-        #return to the original scale
-        m_array[i]=m_array[i]*norm
-        try:
-            parametric_fit(m_array[i],i)
-        except TypeError:
-            print("Empty mean points vector: exiting")
+    #keep a log of the LPC cycles
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    with open('{0}/lpc_log.txt'.format(save_fol), 'w') as log:
+        print("++ Starting track cycles ++")
+        for i in range(n_cyc):
+            print("++ Starting LPC cycle {0} ++".format(i))
+            print("++ Starting LPC cycle {0} ++".format(i),file=log)
+            #find the starting point 
+            start=find_com(hits,amps)
+            print("Starting point: {0}".format(start*norm),file=log)
+            # perform an lpc cycle and save the resulting points (and graphs)
+            print("++ Starting LPC cycle ++",file=log)
+            lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i)
+            #print("lpc shape: ",lpc_points.shape)
+            #remove from X the hits in the vicinity of the lpc curve
+            amps=amps[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+            hits= hits[np.all(cdist(hits,lpc_points)>=n_neg/norm,axis=1)]
+            #return to the original scale
+            m_array[i]=m_array[i]*norm
+            try:
+                print("++ Fitting the LPC means ++",file=log)
+                parametric_fit(m_array[i],i)
+            except TypeError:
+                print("++ Fitting the LPC means ++",file=log)
+                print("-- Empty mean points vector: exiting --",file=log)
         
-
-# #function that determines the vertex with a closeness criterion
-# def find_vert(m_array,par_ar_xy,par_ar_xz):
-#     for i  in range(n_cyc):
-#         #cycle in range(i,2) to count each pair only once
-#         for j in range(i+1,n_cyc):
-#             m_array1=m_array[i][~np.all(m_array[i]==0, axis=1)]
-#             m_array2=m_array[j][~np.all(m_array[j]==0, axis=1)]
-#             fit_points1=np.array([m_array1[:,0],m_array1[:,0]*par_ar_xy[i][0]+par_ar_xy[i][1],
-#                                   m_array1[:,0]*par_ar_xz[i][0]+par_ar_xz[i][1]])
-#             fit_points2=np.array([m_array2[:,0],m_array2[:,0]*par_ar_xy[j][0]+par_ar_xy[j][1],
-#                                   m_array2[:,0]*par_ar_xz[j][0]+par_ar_xz[j][1]])
-#             #transpose to get (n,3) arrays
-#             fit_points1=fit_points1.transpose()
-#             fit_points2=fit_points2.transpose()
-#             #sort by the "x" coordinate
-#             fit_points1=fit_points1[np.argsort(fit_points1[:, 0])]
-#             fit_points2=fit_points2[np.argsort(fit_points2[:, 0])]
-#             #get the array of distances between all the points
-#             t_dist=cdist(fit_points1,fit_points2)
-#             print(t_dist.shape)
-#             ind=np.unravel_index(np.argmin(t_dist, axis=None), t_dist.shape)
-#             if t_dist.min() <=n_width:
-#                 print("Vertex between tracks {0} and {1} found".format(i,j))
-#                 print("Distance: ",t_dist.min())
-#                 print("Track 1 coordinate: ",fit_points1[ind[0]])
-#                 print("Track 2 coordinate: ",fit_points2[ind[1]])
-#             else:
-#                 print("No vertex found")
 
 #Perform the LPC cycle
 def lpc_cycle(m0,hits,amps,N,cycle):
@@ -188,88 +172,94 @@ def lpc_cycle(m0,hits,amps,N,cycle):
     closest_old=np.zeros_like(hits)
     angles=np.zeros(lpc_points.shape[0])
 #start the cycle
-    for l in range(N_p):
-        print("+++++++++++++++++++++")
-        print("Cycle {0}".format(l))
-        print("LPC point = ",lpc_points[l])
-        count+=1
-        #find the points of the N-wide neighborhood of lpc_points[l]
-        closest, amplitudes=N_closest(lpc_points[l],hits,amps,N)
-        #remove the points featured in the previous cycle
-        closest, amplitudes=remove_old(closest,closest_old,amplitudes)
-        #compute the local mean
-        m_vec[l],zero_flag=loc_mean(lpc_points[l],closest,amplitudes,h)
-        if zero_flag:
-                print("Zero division error: exiting cycle")
+    with open('{0}/lpc_log.txt'.format(save_fol), 'a') as log:
+        for l in range(N_p):
+            print("+++++++++++++++++++++",file=log)
+            print("Cycle {0}".format(l),file=log)
+            print("LPC point = ",lpc_points[l],file=log)
+            count+=1
+            #find the points of the N-wide neighborhood of lpc_points[l]
+            closest, amplitudes=N_closest(lpc_points[l],hits,amps,N)
+            #remove the points featured in the previous cycle
+            closest, amplitudes=remove_old(closest,closest_old,amplitudes)
+            #compute the local mean
+            m_vec[l],zero_flag=loc_mean(lpc_points[l],closest,amplitudes,h)
+            if zero_flag:
+                print("++ Zero division error: exiting cycle ++")
+                print("++ Zero division error: exiting cycle ++",file=log)
                 break
-        #compute the path length
-        if l>0:
-            pathl+=np.linalg.norm(m_vec[l]-m_vec[l-1])
-        sigma = loc_cov(lpc_points[l],closest,m_vec[l],amplitudes,h)
-        try:
-            val,gamma=np.linalg.eigh(sigma)
-        except np.linalg.LinAlgError:
-            print("Eigenvalues did not converge: exiting")
-            break
-        gamma=gamma[:,val.size-1]
-        gamma=gamma/np.sqrt(np.dot(gamma,gamma))
-        #reverse the vector if the cos of the angle with the previous is negative
-        if np.dot(gamma,gamma_old)<0:
-            gamma =-1*gamma
-        #apply penalization if l>=1
-        if l>0:
-            a=abs(np.dot(gamma,gamma_old))**2
-            gamma=a*gamma+(1-a)*gamma_old
-            angles[l]=1- abs(np.dot(gamma,gamma_old))
-        #find the next local neighborhood point
-        try:
-            lpc_points[l+1]=m_vec[l]+f_b*t*gamma
-        except IndexError:
-            print("Could not reach convergence")
-            break
-        #save the "old" variables
-        closest_old=closest
-        #amplitudes_old=amplitudes
-        if l==0:
-            R=1
-        else:
-            R=(pathl-pathl_old)/(pathl+pathl_old)
-            print("R = ",R)
-        #update the "old" variables
-        gamma_old=gamma
-        pathl_old=pathl
-        if R<7*10**(-4):
-            if f_b ==-1:
-                print("Curve has converged: exiting")
+            #compute the path length
+            if l>0:
+                pathl+=np.linalg.norm(m_vec[l]-m_vec[l-1])
+            sigma = loc_cov(lpc_points[l],closest,m_vec[l],amplitudes,h)
+            try:
+                val,gamma=np.linalg.eigh(sigma)
+            except np.linalg.LinAlgError:
+                print("++ Eigenvalues did not converge: exiting ++")
+                print("++ Eigenvalues did not converge: exiting ++",file=log)
                 break
+            gamma=gamma[:,val.size-1]
+            gamma=gamma/np.sqrt(np.dot(gamma,gamma))
+            #reverse the vector if the cos of the angle with the previous is negative
+            if np.dot(gamma,gamma_old)<0:
+                gamma =-1*gamma
+            #apply penalization if l>=1
+            if l>0:
+                a=abs(np.dot(gamma,gamma_old))**2
+                gamma=a*gamma+(1-a)*gamma_old
+                angles[l]=1- abs(np.dot(gamma,gamma_old))
+            #find the next local neighborhood point
+            try:
+                lpc_points[l+1]=m_vec[l]+f_b*t*gamma
+            except IndexError:
+                print("++ Could not reach convergence ++")
+                print("++ Could not reach convergence ++",file=log)
+                break
+            #save the "old" variables
+            closest_old=closest
+            #amplitudes_old=amplitudes
+            if l==0:
+                R=1
             else:
-                print("----------")
-                print("Inverting")
-                print("----------")
-                f_b=-1
-                lpc_points[l+1]=m0
-                c=1
-                count=0
-        elif l>0:
-            if R<b:
-                c=(1-b)*c
-                h=h*c
-            else:
-                c=min(1.01*c,1.0)
-                h=0.5
-                #print("Branch 3")
-            if count>=(0.5*N_p):
-                if f_b==-1:
-                    print("Reached max. number of points: exiting")
+                R=(pathl-pathl_old)/(pathl+pathl_old)
+                print("R = ",R,file=log)
+            #update the "old" variables
+            gamma_old=gamma
+            pathl_old=pathl
+            if R<7*10**(-4):
+                if f_b ==-1:
+                    print("++ Curve has converged: exiting ++")
+                    print("++ Curve has converged: exiting ++",file=log)
                     break
                 else:
-                    print("+++++++++++")
-                    print("+Inverting+")
-                    print("+++++++++++")
+                    print("----------",file=log)
+                    print("Inverting",file=log)
+                    print("----------",file=log)
                     f_b=-1
                     lpc_points[l+1]=m0
                     c=1
                     count=0
+            elif l>0:
+                if R<b:
+                    c=(1-b)*c
+                    h=h*c
+                else:
+                    c=min(1.01*c,1.0)
+                    h=0.5
+                    #print("Branch 3")
+                if count>=(0.5*N_p):
+                    if f_b==-1:
+                        print("++ Reached max. number of points: exiting ++")
+                        print("++ Reached max. number of points: exiting ++",file=log)
+                        break
+                    else:
+                        print("+++++++++++",file=log)
+                        print("+Inverting+",file=log)
+                        print("+++++++++++",file=log)
+                        f_b=-1
+                        lpc_points[l+1]=m0
+                        c=1
+                        count=0
     #Draw the LPC points plot
     draw_plots(lpc_points,m_vec,angles,cycle)
     return lpc_points, m_vec
@@ -298,20 +288,6 @@ def parametric_fit(m_vec,cycle):
     plt.title("Mean points fit",size=20)
     plt.plot(x_par[1]+t[:]*x_par[0],y_par[1]+t[:]*y_par[0],z_par[1]+t[:]*z_par[0],'r',linewidth=3)
     plt.savefig('{0}/Event_fit_{1}.pdf'.format(save_fol,cycle))
-    #histogram of the point-line distances
-    #define the starting point for the line and the unit direction vector
-    # a=np.column_stack((x_par[1],y_par[1],z_par[1]))
-    # n=np.column_stack((x_par[0],y_par[0],z_par[0]))
-    # dist =np.zeros(m_vec.shape[0])
-    # for i in range(m_vec.shape[0]):
-    #     dist[i]=np.linalg.norm(np.cross((m_vec[i]-a),n))/np.linalg.norm(n)
-    # fig1 = plt.figure(figsize=(7, 7))
-    # plt.hist(dist,20,edgecolor='white')
-    # plt.title("Points-fit distance histogram",size=20)
-    # plt.xlabel('Point-fit distance (cm)',fontsize=16)
-    # plt.ylabel('Occurrences',fontsize=16)
-    # plt.savefig('{0}/Fit_dist_{1}.pdf'.format(save_fol,cycle))
-    # plt.show()
     #save the fit parameters in the log file
     try:
         os.mkdir(save_fol)
@@ -369,28 +345,6 @@ def draw_plots(lpc_points,m_vec,angles,cycle):
     plt.title("Mean points plot",size=20)
     plt.savefig('{0}/Ev_{1}_mean_c{2}.pdf'.format(save_fol,j,cycle))
     plt.pause(0.05)
-    #plt.show()
-    # #Draw the plot of eigenvector angles
-    # fig3 = plt.figure(figsize=(7, 7))
-    # lpc_range= np.arange(angles.shape[0])
-    # plt.plot(lpc_range, angles,marker='o')
-    # plt.title("Feature points plot")
-    # #plt.savefig('{0}/Feature_points.png'.format(folder,cycle))
-    # #plt.show()
-    # #Draw the heatmap of eigenvector angles
-    # angles=angles[~np.all(lpc_cache==0,axis=1)]
-    # fig4 = plt.figure(figsize=(7, 7))
-    # ax = fig4.add_subplot(111, projection='3d')
-    # ax.set_xlim((x[0],x[x.shape[0]-1]))
-    # ax.set_ylim((y[0],y[y.shape[0]-1]))
-    # ax.set_zlim((z[0],z[z.shape[0]-1]))
-    # ax.set_xlabel('x',fontsize=14,weight='bold')
-    # ax.set_ylabel('y',fontsize=14,weight='bold')
-    # ax.set_zlabel('z',fontsize=14,weight='bold')
-    # img=ax.scatter(lpc_points[:,0],lpc_points[:,1],lpc_points[:,2],c=angles,s=20,marker='s')
-    # plt.colorbar(img,fraction=0.025, pad=0.07,label="Angle")
-    # plt.title("Eigenvector angles plot")
-    #plt.savefig('{0}/Angles_plot.png'.format(folder,cycle))
     plt.show(block=False)
 
 
@@ -446,12 +400,6 @@ def save_results():
     with open('{0}/parameters.txt'.format(save_fol), 'w') as s:
         print("File: {0}".format(file_sel),file=s)
         print("Event: {0}".format(j),file=s)
-        # print("b_x_l: {0}".format(b_x_l),file=s)
-        # print("b_x_u: {0}".format(b_x_u),file=s)
-        # print("b_y_l: {0}".format(b_y_l),file=s)
-        # print("b_y_u: {0}".format(b_y_u),file=s)
-        # print("b_z_l: {0}".format(b_z_l),file=s)
-        # print("b_z_u: {0}".format(b_z_u),file=s)
         print("Lower cut fraction: {0}".format(c_frac_l),file=s)
         print("Upper cut fraction: {0}".format(c_frac_u),file=s)
         print("C.O.M neighborhood width: {0}".format(CM_width),file=s)
@@ -493,14 +441,14 @@ if  __name__ == "__main__":
             try:
                 dictionary=pickle.load(open(file_sel,"rb"))
             except FileNotFoundError:
-                print("Please select a valid file!")
+                print("-- Please select a valid file! --")
                 continue
-            print("Selected .pkl: "+file_sel)
+            print("++ Selected .pkl: "+file_sel+" ++")
             key_name, dictionary = next(iter(dictionary.items()))
         #take one of the events (this will have to remain )
-            #use og_array to get the ize of the volume
-            key_list=list(dictionary[0])
-            og_array=np.array(dictionary[0][key_list[0]]['amplitude'])
+            #use og_array to get the size of the volume
+            key_list=list(dictionary[10])
+            og_array=np.array(dictionary[10][key_list[0]]['amplitude'])
             lpc_layout = [[sg.T("")], #[sg.Text("Choose a file: ",font=font_corpus),
                                               #sg.Input(file_sel,font=font_corpus),
                                               #sg.FileBrowse(key="-File-",font=font_corpus),
@@ -511,20 +459,8 @@ if  __name__ == "__main__":
                                            font=font_corpus,initial_folder='/Users/alessandro/TesiMag/MURA_code/TrackReco/GRAIN_plots')],
                           [sg.T("")],
                           [sg.Text('Enter event',font=font_title)],
-                          [sg.Combo(np.arange(len(dictionary)),default_value='0',font=font_corpus,key='-IN0-')],
+                          [sg.Combo(np.arange(10,10+len(dictionary)),default_value='10',font=font_corpus,key='-IN0-')],
                           [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
-                          # [TextLabel('b_x_l'),sg.Slider(range=(0,og_array.shape[2]),
-                          #                               default_value ='0',orientation = 'horizontal',key='-IN1L-',font=font_corpus)],
-                          # [TextLabel('b_x_u'),sg.Slider(range=(0,og_array.shape[2]),
-                          #                               default_value=og_array.shape[2],orientation = 'horizontal',key='-IN1U-',font=font_corpus)],
-                          # [TextLabel('b_y_l'),sg.Slider(range=(0,og_array.shape[1]),
-                          #                               default_value ='0',orientation = 'horizontal',key='-IN2L-',font=font_corpus)],
-                          # [TextLabel('b_y_u'),sg.Slider(range=(0,og_array.shape[1]),
-                          #                               default_value =og_array.shape[1],orientation = 'horizontal',key='-IN2U-',font=font_corpus)],
-                          # [TextLabel('b_z_l'),sg.Slider(range=(0,og_array.shape[0]),
-                          #                               default_value ='0',orientation = 'horizontal',key='-IN3L-',font=font_corpus)],
-                          # [TextLabel('b_z_u'),sg.Slider(range=(0,og_array.shape[0]),
-                          #                               default_value =og_array.shape[0],orientation = 'horizontal',key='-IN3U-',font=font_corpus)],
                           [TextLabel('Lower amp. cut'),sg.Input('0.96',key='-IN5L-',justification='l',font=font_corpus,size=(4))],
                           [TextLabel('Upper amp. cut'),sg.Input('1.',key='-IN5U-',justification='l',font=font_corpus,size=(4))],
                           [[sg.T("")],sg.Button('Plot',font=font_corpus)],
@@ -543,12 +479,16 @@ if  __name__ == "__main__":
             while True:
 
                 event,values = proc_window.read()
+                #close the program if the button is pressed
+                if event == sg.WIN_CLOSED or event == 'Exit':
+                    break
+                #initialize the parameters
                 save_fol=str(values.get('-Fol-'))
-                j=int(values.get('-IN0-'))
                 try:
+                    j=int(values.get('-IN0-'))
                     key_list=list(dictionary[j])
-                except KeyError:
-                    print("Invalid event number!")
+                except (ValueError, KeyError):
+                    print("-- Invalid event number! --")
                     continue
                 ev=dictionary[j][key_list[0]]['amplitude']
                 og_array=np.array(ev)
@@ -558,12 +498,6 @@ if  __name__ == "__main__":
                     og_array+=np.array(ev)
                 #og_array=np.swapaxes(og_array, 0, 2)
                 array=np.empty_like(og_array)
-                # b_x_l=int(values.get('-IN1L-'))
-                # b_x_u=int(values.get('-IN1U-'))
-                # b_y_l=int(values.get('-IN2L-'))
-                # b_y_u=int(values.get('-IN2U-'))
-                # b_z_l=int(values.get('-IN3L-'))
-                # b_z_u=int(values.get('-IN3U-'))
                 c_frac_l=float(values.get('-IN5L-'))
                 c_frac_u=float(values.get('-IN5U-'))
                 array=og_array[5:(array.shape[0]-5),5:(array.shape[1]-5),5:(array.shape[2]-5)]
@@ -576,10 +510,10 @@ if  __name__ == "__main__":
                 array = array/np.max(array)
                 #skip cycle if the cut values are not valid
                 if (c_frac_l <0) or (c_frac_l >1.) or (c_frac_l >= c_frac_u):
-                    print("Invalid lower cut fraction!")
+                    print("-- Invalid lower cut fraction! --")
                     continue
                 elif (c_frac_u <0) or (c_frac_u >1.):
-                    print("Invalid upper cut fraction!")
+                    print("-- Invalid upper cut fraction! --")
                     continue
                 #perform the amplitude cuts on amp. and coord. arrays
                 cut_array=array[(array>=c_frac_l) & (array<=c_frac_u)]
@@ -599,18 +533,26 @@ if  __name__ == "__main__":
                 d = np.zeros([X.shape[0],X.shape[0]])
                 for i in range(X.shape[0]):
                     d[i]=np.linalg.norm(X[i])
-                norm=(d.max()-d.min())
-                X = X/norm
+                try: 
+                    norm=(d.max()-d.min())
+                except ValueError:
+                    print("-- No remaining points: try other cuts! --")
+                    continue                
+                if norm==0.:
+                    print("-- Only one point: cannot normalize! --")
+                    print("-- Try other cuts! --")
+                    continue
+                else:
+                    X = X/norm
                 #set the max number of LPC points as a main var.
                 N_p=200
-                if event == sg.WIN_CLOSED or event == 'Exit':
-                    break
-                elif event=='Plot':
+                if event=='Plot':
                     plt.close()
                     try:
+                        print("++ Plotting ++")
                         show_plot()
                     except OSError:
-                        print("Select a valid folder!")
+                        print("-- Select a valid folder! --")
                         continue
                 elif event=='Start LPC':
                     CM_width=int(values.get('-INCM-'))
@@ -619,18 +561,19 @@ if  __name__ == "__main__":
                     n_neg=int(values.get('-IN8-'))
                     try:
                         if n_cyc<=0:
-                            print("Invalid LPC cycle number!")
+                            print("-- Invalid LPC cycle number! --")
                             continue
                         else:
                             track_cycle(X,cut_array)
                     except OSError:
-                        print("Select a valid folder!")
+                        print("-- Select a valid folder! --")
                         continue
                 elif event=="Save Parameters":
                     try:
+                        print("++ Saving parameters ++")
                         save_results()
                     except OSError:
-                        print("Select a valid folder!")
+                        print("-- Select a valid folder! --")
                         continue
 
             proc_window.close()
