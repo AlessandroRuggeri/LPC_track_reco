@@ -26,30 +26,26 @@ if  __name__ == "__main__":
     group2=parser.add_argument_group('Amplitude cuts')
     group2.add_argument('--lower_cut',type=float,help="Lower amplitude cut",default=0.97)
     group2.add_argument('--upper_cut',type=float,help="Upper amplitude cut",default=1.)
-    group3=parser.add_argument_group('LPC parameters')
-    group3.add_argument('--Cyc_num',type=int,help="Number of LPC cycles",default=1)
-    group3.add_argument('--CM_neigh_width',type=float,help="Voxel width for CM computation",default=10)
-    group3.add_argument('--LPC_neigh_width',type=float,help="Voxel width for LPC computation",default=6)
-    group3.add_argument('--excl_width',type=float,help="Excluded voxel width for new starting point",default=5)
-    group4=parser.add_argument_group('Confirms')
-    group4.add_argument('--lpc_confirm',type=str,help="Compute the LPC? [y if yes]",default='y')
-    group4.add_argument('--save_confirm',type=str,help="Save the parameters? [y if yes]",default='n')
+    group3=parser.add_argument_group('C.O.M parameters')
+    group3.add_argument('--Loc_cm_width',type=float,help="Voxel width for local CM computation",default=10)
+    group3.add_argument('--Glob_cm_width',type=float,help="Voxel width for global CM computation",default=20)
+    group4=parser.add_argument_group('LPC parameters')
+    group4.add_argument('--Cyc_num',type=int,help="Number of LPC cycles",default=1)
+    group4.add_argument('--LPC_neigh_width',type=float,help="Voxel width for LPC computation",default=6)
+    group4.add_argument('--excl_width',type=float,help="Excluded voxel width for new starting point",default=5)
+    group5=parser.add_argument_group('Confirms')
+    group5.add_argument('--lpc_confirm',type=str,help="Compute the LPC? [y if yes]",default='n')
+    group5.add_argument('--com_confirm',type=str,help="Compute the C.O.M? [y if yes]",default='n')
+    group5.add_argument('--save_confirm',type=str,help="Save the parameters? [y if yes]",default='y')
     
-    #parser.print_help()
     args=parser.parse_args()
     
     print("++++++++++++")
     file_sel=args.pickle
-    # try:
+    #open the .pkl
     dictionary=pickle.load(open(file_sel,"rb"))
-    # except FileNotFoundError as e:
-    #     raise FileNotFoundError("-- Please select a valid file! --") from e
-        
     print("++ Selected .pkl: "+file_sel+" ++")
     key_name, dictionary = next(iter(dictionary.items()))
-#take one of the events (this will have to remain )
-    #use og_array to get the size of the volume
-
     #initialize the save folder
     save_fol=args.save_fol
     try:
@@ -78,7 +74,7 @@ if  __name__ == "__main__":
     x= np.arange(-x_size,x_size,1)
     y=np.arange(-y_size,y_size,1)
     z=np.arange(-z_size,z_size,1)
-    #rescaling the amplitudes
+    #rescale the amplitudes
     array=array-np.min(array)
     array = array/np.max(array)
     #get the amplitude cuts
@@ -94,8 +90,7 @@ if  __name__ == "__main__":
     x_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[2]
     y_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[1]
     z_cut=np.nonzero((array>=c_frac_l) & (array<=c_frac_u))[0]
-    #defining the matrix of cut coordinates
-    #reshaping the index vectors to get the right shape for X
+    #reshape the index vectors to get the right shape for X
     x_cut=x_cut.transpose()+5.5-x_size
     y_cut=y_cut.transpose()+5.5-y_size
     #flip an axis to get the right cartesian triplet
@@ -116,16 +111,16 @@ if  __name__ == "__main__":
         X = X/norm
     #plot the event
     plot_save.show_plot(X,cut_array,norm,x,y,z,j,save_fol)
+    #get the C.O.M parameters
+    CM_width=args.Loc_cm_width
+    Glob_CM_width=args.Glob_cm_width
     #get the LPC parameters
-    CM_width=args.CM_neigh_width
     n_cyc=args.Cyc_num
     n_width=args.LPC_neigh_width
     n_neg=args.excl_width
     if n_cyc<=0:
         raise ValueError("-- Invalid LPC cycle number! --")
-    lpc_confirm=args.lpc_confirm
-    save_confirm = args.save_confirm
-    if lpc_confirm=='y':
+    if args.lpc_confirm=='y':
         try:
             #set the max number of LPC points
             N_p=200
@@ -135,11 +130,18 @@ if  __name__ == "__main__":
             raise OSError("-- Select a valid folder! --")
     else:
         print("++ LPC not to be computed ++")
-    if save_confirm == 'y':
+    if args.com_confirm=='y':
+        try:
+            lpc_functions.COM_cycle(X,cut_array,norm,CM_width,Glob_CM_width,j,save_fol)
+        except OSError:
+            raise OSError("-- Select a valid folder! --")
+    else:
+        print("++ C.O.M not to be computed ++")
+    if args.save_confirm == 'y':
         try:
             print("++ Saving parameters ++")
             plot_save.save_results(file_sel,j,save_fol,c_frac_l,
-                                   c_frac_u,CM_width,n_cyc,n_width,n_neg)
+                                   c_frac_u,CM_width,Glob_CM_width,n_cyc,n_width,n_neg)
         except OSError:
             raise OSError("-- Select a valid folder! --")
     else:

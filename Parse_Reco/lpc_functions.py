@@ -8,6 +8,7 @@ Created on Wed Feb 16 21:35:12 2022
 
 import numpy as np
 import math as mt
+import os
 #import cdist form scipy to efficiently compute distances between all pairs of points
 from scipy.spatial.distance import cdist
 
@@ -18,11 +19,9 @@ import plot_save
 #computing the weight vector
 #We take the starting point and the closest points for which to compute the weights
 def weight(u,hits,amplitudes,h):
-    w = np.zeros(hits.shape[0])
-    for i in range(hits.shape[0]):
     #computing the weights
-        w[i] = (amplitudes[i]/
-                ((h**3)*((2*mt.pi)**(3/2))))*mt.exp((-1/(2*(h**2)))*np.dot((hits[i]-u),(hits[i]-u)))
+    w = (amplitudes/
+            ((h**3)*((2*mt.pi)**(3/2))))*np.exp((-1/(2*(h**2)))*np.linalg.norm(hits-u,axis=1)**2)
     return w
 
 #computing the local mean
@@ -39,11 +38,11 @@ def loc_mean(u,closest,amplitudes,h):
         # print("Zero Division Error!!!")
         # print("The weights:")
         # print(weights)
-        m=[0.,0.,0.]
+        m=np.array([0.,0.,0.])
         zero_flag=True
     return m, zero_flag
 
-#Computing the local covariant matrix
+#Computing the local covariance matrix
 def loc_cov(u,closest,m,amplitudes,h):
     #find the weights
     weights=weight(u,closest,amplitudes,h)
@@ -58,9 +57,7 @@ def loc_cov(u,closest,m,amplitudes,h):
     sigma = sigma/np.sum(weights)
     return sigma
 
-
-
-#Get points within N voxels
+#Get points within n_width cm
 def N_closest(u,hits,amps,n_width,norm):
     dist = np.zeros(hits.shape[0])
 #computing the distance between u and each hits[i]
@@ -70,18 +67,20 @@ def N_closest(u,hits,amps,n_width,norm):
 #slicing the hits matrix over the closest indices
     return np.take(hits,dist,axis=0),np.take(amps,dist,axis=0)
 
-
+#Remove the old points when computing the LPC
 def remove_old(points,points_old,amplitudes):
     #print("points shape: ",points.shape,", old points shape: ",points_old.shape)
     mask=(points[:,None]==points_old).all(-1).any(-1)
     mask=np.invert(mask)
     return points[mask], amplitudes[mask]
-
 #%% LPC cycle functions
 
 #refined search of the center of mass 
-def find_com(hits,amps,norm,CM_width):
-    #start with the global c.o.m.
+def find_com(hits,amps,norm,CM_width,log):
+    print("++ Starting C.O.M computation ++")
+    print("++ Starting C.O.M computation ++",file=log)
+    print("++ With {0} cm local neighborhood width ++".format(CM_width),file=log)
+    #compute the local c.o.m
     try:
         #compute the c.o.m. of the remaining hits
         c_mass=np.average(hits,axis=0,weights=amps)
@@ -90,12 +89,12 @@ def find_com(hits,amps,norm,CM_width):
         index=(cdist(hits,c_mass)).argmin()
         #use this hit as the starting point
         start=hits[index]
+        print("++ Initial local C.O.M: {0} (cm)".format(start*norm),file=log)
     except ZeroDivisionError:
-        print("-- Zero Division Error --")
+        print("-- Too few points, starting from [0,0,0] --",file=log)
         start=np.array([0.,0.,0.])
     #find the hits closer than CM_width and compute their c.o.m.
     #cycle until the c.o.m. position stabilizes (or enough times)
-    #then use the closest point to the c.o.m. as the start of the LP
     for i in range(30):
         start_old=start
         close_hits, close_amps=N_closest(start,hits,amps,CM_width,norm)
@@ -104,8 +103,9 @@ def find_com(hits,amps,norm,CM_width):
             c_mass=np.reshape(c_mass,(1,3))
             index=(cdist(close_hits,c_mass)).argmin()
             start=close_hits[index]
+            print("++ Cycle {0} local C.O.M: {1} (cm)".format(i,start*norm),file=log)
         except ZeroDivisionError:
-            print("-- Too few points left: exiting --")
+            print("-- Too few points left: exiting --",file=log)
             break
         if (np.linalg.norm(start-start_old)<=3/norm):
             break
@@ -120,14 +120,19 @@ def track_cycle(hits,amps,norm,N_p,n_cyc,n_width,n_neg,x,y,z,CM_width,
     og_amps=amps
     m_array=np.zeros((n_cyc,N_p,3))
     #keep a log of the LPC cycles
-    with open('{0}/lpc_log.txt'.format(save_fol), 'w') as log:
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    with open('{0}/Ev{1}_lpc_log.txt'.format(save_fol,event_num), 'w') as log:
+        print('++ Event {0}'.format(event_num),file=log)
         print("++ Starting track cycles ++")
         for i in range(n_cyc):
             print("++ Track {0} ++".format(i))
             print("++ Track {0} ++".format(i),file=log)
             #find the starting point 
-            start=find_com(hits,amps,norm,CM_width)
-            print("Starting point: {0}".format(start*norm),file=log)
+            start=find_com(hits,amps,norm,CM_width,log)
+            print("++ Starting point: {0} (cm)".format(start*norm),file=log)
             # perform an lpc cycle and save the resulting points (and graphs)
             print("++ Starting LPC cycles ++",file=log)
             lpc_points,m_array[i]=lpc_cycle(start,og_hits,og_amps,n_width,i,
@@ -145,6 +150,35 @@ def track_cycle(hits,amps,norm,N_p,n_cyc,n_width,n_neg,x,y,z,CM_width,
             except TypeError:
                 print("++ Fitting the LPC means ++",file=log)
                 print("-- Empty mean points vector: exiting --",file=log)
+        print("++ LPC computation complete ++ ")
+        print("++ LPC computation complete ++ ",file=log)
+        log.close()
+
+#compute the center of mass of blobs
+def COM_cycle(hits,amps,norm,CM_width,G_CM_width,event_num,save_fol):
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    with open('{0}/Ev{1}_COM_log.txt'.format(save_fol,event_num), 'w') as log:
+        print('++ Event {0}'.format(event_num),file=log)
+        #find the starting point 
+        start=find_com(hits,amps,norm,CM_width,log)
+        print("++ Final local C.O.M: {0} (cm)".format(start*norm),file=log)
+        #once at the center of the cluster compute its c.o.m.
+        close_hits, close_amps=N_closest(start,hits,amps,G_CM_width,norm)
+        try:
+            c_mass=np.average(close_hits,axis=0,weights=close_amps)
+            c_mass=np.reshape(c_mass,(1,3))
+            index=(cdist(close_hits,c_mass)).argmin()
+            center_est=close_hits[index]
+            center_est=center_est*norm
+            print("++ C.O.M neighborhood width: {0} cm".format(G_CM_width),file=log)
+            print('++ C.O.M= {0} (cm)'.format(center_est),file=log)
+        except ZeroDivisionError:
+            print("-- Too few points left: exiting.",file=log)
+        print("++ C.O.M computation complete ++ ")
+        print("++ C.O.M computation complete ++ ",file=log)
         log.close()
 
 #Perform the LPC cycle
@@ -170,7 +204,7 @@ def lpc_cycle(m0,hits,amps,n_width,cycle,N_p,norm,x,y,z,event_num,
     for l in range(N_p):
         print("+++++++++++++++++++++",file=log)
         print("Cycle {0}".format(l),file=log)
-        print("LPC point = ",lpc_points[l],file=log)
+        print("LPC point = ",lpc_points[l]*norm," (cm)",file=log)
         count+=1
         #find the points of the N-wide neighborhood of lpc_points[l]
         closest, amplitudes=N_closest(lpc_points[l],hits,amps,n_width,norm)
@@ -269,14 +303,47 @@ def parametric_fit(m_vec,cycle,x,y,z,event_num,save_fol):
     y_par=np.polyfit(t,m_vec[:,1],1)
     z_par=np.polyfit(t,m_vec[:,2],1)
     plot_save.plot_fit(m_vec,x,y,z,x_par,y_par,z_par,t,cycle,event_num,save_fol)
+    #first and last projections of the LPC mean points by t parameter
+    #define the starting point for the line and the unit direction vector
+    a=np.column_stack((x_par[1],y_par[1],z_par[1]))
+    n=np.column_stack((x_par[0],y_par[0],z_par[0]))
+    #define the endpoint of the fit line
+    b=a+n*1
+    projections=a+(np.einsum('ij,kj-> ik',(m_vec-a),(b-a))/np.dot((b-a)[0],(b-a)[0]))*(b-a)[0]
+    #find the t of the projected points
+    proj_t=np.linalg.norm(projections-a[0],axis=1)/np.linalg.norm(n[0])
+    #now sort the projections by their t
+    proj_t_sort = proj_t.argsort()
+    projections=projections[proj_t_sort[::+1]]
     #save the fit parameters in the log file
-    with open('{0}/fit_par.txt'.format(save_fol), 'a') as s:
-        print('Event {0}'.format(event_num),file=s)
-        print('Cycle {0} parameters'.format(cycle),file=s)
-        print("x0: {0}".format(x_par[1]),file=s)
-        print("x1: {0}".format(x_par[0]),file=s)
-        print("y0: {0}".format(y_par[1]),file=s)
-        print("y1: {0}".format(y_par[0]),file=s)
-        print("z0: {0}".format(z_par[1]),file=s)
-        print("z1: {0}".format(z_par[0]),file=s) 
-        s.close()
+    try:
+        os.mkdir(save_fol)
+    except FileExistsError:
+        pass
+    #rewrite the file if in the first LPC cycle, append the parameters if in the 
+    #subsequent ones
+    if(cycle == 0):
+        with open('{0}/Ev{1}_fit_par.txt'.format(save_fol,event_num), 'w') as s:
+            print('++ Event {0}'.format(event_num),file=s)
+            print('++ Cycle {0} parameters'.format(cycle),file=s)
+            print("x0: {0} cm".format(x_par[1]),file=s)
+            print("x1: {0} cm".format(x_par[0]),file=s)
+            print("y0: {0} cm".format(y_par[1]),file=s)
+            print("y1: {0} cm".format(y_par[0]),file=s)
+            print("z0: {0} cm".format(z_par[1]),file=s)
+            print("z1: {0} cm".format(z_par[0]),file=s) 
+            print("First LPC proj. point: {0} (cm)".format(projections[0]),file=s)
+            print("Last LPC proj. point: {0} (cm)".format(projections[projections.shape[0]-1]),file=s)
+            s.close()
+    else:
+        with open('{0}/Ev{1}_fit_par.txt'.format(save_fol,event_num), 'a') as s:
+            print('++ Cycle {0} parameters'.format(cycle),file=s)
+            print("x0: {0} cm".format(x_par[1]),file=s)
+            print("x1: {0} cm".format(x_par[0]),file=s)
+            print("y0: {0} cm".format(y_par[1]),file=s)
+            print("y1: {0} cm".format(y_par[0]),file=s)
+            print("z0: {0} cm".format(z_par[1]),file=s)
+            print("z1: {0} cm".format(z_par[0]),file=s)
+            print("First LPC proj. point: {0} (cm)".format(projections[0]),file=s)
+            print("Last LPC proj. point: {0} (cm)".format(projections[projections.shape[0]-1]),file=s)
+            s.close()
