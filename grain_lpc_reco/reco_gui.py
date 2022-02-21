@@ -69,12 +69,14 @@ def main_gui():
                           [TextLabel('Lower amp. cut'),sg.Input('0.96',key='-IN5L-',justification='l',font=font_corpus,size=(5))],
                           [TextLabel('Upper amp. cut'),sg.Input('1.',key='-IN5U-',justification='l',font=font_corpus,size=(5))],
                           [[sg.T("")],sg.Button('Plot',font=font_corpus)],
+                          [[sg.T("")],sg.Text('Enter C.O.M parameters',font=font_title)],
+                          [TextLabel('Local CM width'),sg.Input('10',key='-INCM-',justification='l',font=font_corpus, size=(4))],
+                          [TextLabel('Global CM width'),sg.Input('20',key='-INCMG-',justification='l',font=font_corpus, size=(4))],
                           [[sg.T("")],sg.Text('Enter LPC parameters',font=font_title)],
                           [TextLabel('Number of cyles'),sg.Input('1',key='-IN6-',justification='l',font=font_corpus, size=(3))],
-                          [TextLabel('CM neigh. width'),sg.Input('10',key='-INCM-',justification='l',font=font_corpus, size=(4))],
                           [TextLabel('LPC neigh. width'),sg.Input('6',justification='l',key='-IN7-',font=font_corpus,size=(4))],
                           [TextLabel('Start excl. width'),sg.Input('10',justification='l',key='-IN8-',font=font_corpus,size=(4))],
-                          [[sg.T("")],[sg.Button('Start LPC',font=font_corpus),sg.Button("Save Parameters",font=font_corpus)],
+                          [[sg.T("")],[sg.Button('Compute LPC',font=font_corpus),sg.Button('Compute C.O.M',font=font_corpus),sg.Button("Save Parameters",font=font_corpus)],
                           [sg.T("")],sg.Button('Change file',font=font_corpus),sg.Exit(font=font_corpus)]]
             proc_window = sg.Window('Control Panel', lpc_layout)
             browse_window.Close()
@@ -83,6 +85,10 @@ def main_gui():
                 event,values = proc_window.read()
                 #close the program if the button is pressed
                 if event == sg.WIN_CLOSED or event == 'Exit':
+                    break
+                elif event=="Change file":
+                    print("++ Select another file ++")
+                    browse_window = make_browse_window()
                     break
                 #initialize the parameters
                 save_fol=str(values.get('-Fol-'))
@@ -155,8 +161,9 @@ def main_gui():
                     X = X/norm
                 #get the LPC parameters
                 try:
-                    n_cyc=int(values.get('-IN6-'))
                     CM_width=float(values.get('-INCM-'))
+                    Glob_CM_width=float(values.get('-INCMG-'))
+                    n_cyc=int(values.get('-IN6-'))
                     n_width=float(values.get('-IN7-'))
                     n_neg=float(values.get('-IN8-'))
                 except ValueError:
@@ -173,7 +180,7 @@ def main_gui():
                     except OSError:
                         print("-- Select a valid folder! --")
                         continue
-                elif event=='Start LPC':
+                elif event=='Compute LPC':
                     try:
                         #set the max number of LPC points
                         N_p=200
@@ -182,18 +189,20 @@ def main_gui():
                     except OSError:
                         print("-- Select a valid folder! --")
                         continue
+                elif event=='Compute C.O.M':
+                    try:
+                        lpc_functions.COM_cycle(X,cut_array,norm,CM_width,Glob_CM_width,j,save_fol)
+                    except OSError:
+                        print("-- Select a valid folder! --")
+                        continue
                 elif event=="Save Parameters":
                     try:
                         print("++ Saving parameters ++")
                         plot_save.save_results(file_sel,j,save_fol,c_frac_l,
-                                               c_frac_u,CM_width,n_cyc,n_width,n_neg)
+                                               c_frac_u,CM_width,Glob_CM_width,n_cyc,n_width,n_neg)
                     except OSError:
                         print("-- Select a valid folder! --")
                         continue
-                elif event=="Change file":
-                    print("++ Select another file ++")
-                    browse_window = make_browse_window()
-                    break
         proc_window.close()
     browse_window.close()
     
