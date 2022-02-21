@@ -1,3 +1,6 @@
 *.DS_store
 Pickles/
 *.png
+*_pycache_/
+*Plots/
+
