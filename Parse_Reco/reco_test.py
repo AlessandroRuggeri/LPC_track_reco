@@ -16,15 +16,15 @@ import lpc_functions
 import plot_save
 
 #%% Main function code
-def main(a_pickle='/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-         a_sf='/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',a_ev=33,a_lc=0.97,
+def main(a_pickle='/placeholder_path/placeholder.pkl',
+         a_sf='/placeholder_path',a_ev=33,a_lc=0.97,
          a_uc=1.,a_cn=1,a_CMw=10,a_gCMw=20,a_lpcw=6,a_exw=5,a_lpcc='n',a_comc='n',a_sc='n'):
     parser = ap.ArgumentParser(description="Event reconstruction parameters")
     group1=parser.add_argument_group('Initial settings')
     group1.add_argument("--pickle",help="select the file to be opened",
-                        default='')
+                        default='/placeholder_path/placeholder.pkl')
     group1.add_argument("--save_fol",help="select the save folder",
-                        default='')
+                        default='/placeholder_path')
     group1.add_argument("--event",help="select event to be checked",type=int,default=33)
     group2=parser.add_argument_group('Amplitude cuts')
     group2.add_argument('--lower_cut',type=float,help="Lower amplitude cut",default=0.97)
@@ -168,44 +168,44 @@ def main(a_pickle='/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.
 def test_valid_file():
     with pytest.raises(Exception):
         print(" ")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl')
+        main('/placeholder_path/placeholder.pkl')
 def test_invalid_file():
     with pytest.raises(FileNotFoundError):
         print(" ")
         print("test_invalid_file")
-        main("/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3")
+        main("/placeholder_path/placeholder.pkl")
 def test_void_folder():
     with pytest.raises(Exception):
         print(" ")
         print("test_void_folder")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',"")
+        main('/placeholder_path/placeholder.pkl',"")
 def test_invalid_folder():
     with pytest.raises(Exception):
         print(" ")
         print("test_invalid_folder")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             "/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default*é°ML_")
+        main('/placeholder_path/placeholder.pkl',
+             "/placeholder_path/default*é°ML_")
 def test_valid_folder():
     with pytest.raises(Exception):
         print(" ")
         print("test_valid_folder")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default')
 #Testing the event number input
 #invalid input
 def test_inv_event():
     with pytest.raises(SystemExit):
         print(" ")
         print("test_inv_event")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default','2w')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default','2w')
 #event outside range
 def test_out_event():
     with pytest.raises(Exception):
         print(" ")
         print("test_out_event")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',60)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',60)
 
 #Testing the cut fractions input
 #equal cut values
@@ -213,37 +213,37 @@ def test_eq_frac():
     with pytest.raises(Exception):
         print(" ")
         print("test_eq_frac")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,0.97)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,0.97)
 
 #cut fraction above 1
 def test_inv_frac():
     with pytest.raises(Exception):
         print(" ")
         print("test_inv_frac")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,2.)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,2.)
 #negative cut fraction
 def test_neg_frac():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_frac")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,-0.97)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,-0.97)
 #test lower cut frac. higher than the upper
 def test_inverted_frac():
     with pytest.raises(Exception):
         print(" ")
         print("test_inverted_frac")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.98,0.97)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.98,0.97)
 #high cut fraction: no exception expected  
 def test_high_frac():
     with pytest.raises(Exception):
         print(" ")
         print("test_high_frac")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.99,1.)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.99,1.)
               
 #testing the number of cycles
 #0 cycles
@@ -251,23 +251,23 @@ def test_zero_cyc():
     with pytest.raises(Exception):
         print(" ")
         print("test_zero_cyc")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.0,0)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.0,0)
 #negative number of cycles
 def test_neg_cyc():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_cyc")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,-2)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,-2)
 #much more cycles than tracks
 #CHECK THIS: in print("Starting point: {0}".format(start*norm),file=log) start has to be an array (np.array)
 def test_many_cyc():
     with pytest.raises(Exception):
         print(" ")
         print("test_many_cyc")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,5)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,5)
         
 #testing the local C.O.M neighborhood width
 #0 cm width
@@ -275,58 +275,58 @@ def test_0_lcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_0_lcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,0)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,0)
 #negative width
 def test_neg_lcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_lcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,-20)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,-20)
 #small width
 def test_small_lcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_small_lcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,1)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,1)
 #large width     
 def test_large_lcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_large_lcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,80)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,80)
 #testing the global C.O.M neighborhood width
 #0 cm width
 def test_0_gcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_0_gcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,0)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,0)
 #negative width
 def test_neg_gcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_gcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,-20)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,-20)
 #small width
 def test_small_gcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_small_gcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,0.05)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,0.05)
 #large width     
 def test_large_gcom():
     with pytest.raises(Exception):
         print(" ")
         print("test_large_gcom")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,80)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,80)
         
 #testing the LPC neighborhood width parameter
 #0 cm width
@@ -334,96 +334,96 @@ def test_0_width():
     with pytest.raises(Exception):
         print(" ")
         print("test_0_width")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,0)
+        main('/placeholder_path/placeholder.pkl/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,0)
 #test small width
 def test_small_width():
     with pytest.raises(Exception):
         print(" ")
         print("test_small_width")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,1)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,1)
 #test fractional width
 def test_frac_width():
     with pytest.raises(SystemExit):
         print(" ")
         print("test_frac_width")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,3.5)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,3.5)
 #test very large widths
 def test_large_width():
     with pytest.raises(Exception):
         print(" ")
         print("test_large_width")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,10)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,10)
 #test negative widths
 def test_neg_width():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_width")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,-3)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,-3)
 #testing the exclusion width parameter
 #0 cycles #error
 def test_0_ex():
     with pytest.raises(Exception):
         print(" ")
         print("test_0_ex")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,0)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,0)
 #test small width
 def test_small_ex():
     with pytest.raises(Exception):
         print(" ")
         print("test_small_ex")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,1)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,1)
 #test fractional width
 def test_frac_ex():
     with pytest.raises(SystemExit):
         print(" ")
         print("test_frac_ex")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,3.5)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,3.5)
 #test very large widths
 def test_large_ex():
     with pytest.raises(Exception):
         print(" ")
         print("test_large_ex")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,30)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,30)
 def test_neg_ex():
     with pytest.raises(Exception):
         print(" ")
         print("test_neg_ex")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,-3)
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,-3)
 #testing the LPC computation condition
 def test_lpc_inv():
     with pytest.raises(Exception):
         print(" ")
         print("test_lpc_inv")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,-3,'something')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,-3,'something')
 #then the valid computation condition
 def test_lpcc_inv():
     with pytest.raises(Exception):
         print(" ")
         print("test_lpcc_inv")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,-3,'something')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,-3,'something')
 #testing the parameters save condition 
 def test_par_inv():
     with pytest.raises(Exception):
         print(" ")
         print("test_par_inv")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,-3,'no','something')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,-3,'no','something')
 #now the valid save condition
 def test_save_inv():
     with pytest.raises(Exception):
         print(" ")
         print("test_save_inv")
-        main('/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl',
-             '/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default',33,0.97,1.,1,10,20,6,-3,'no','something')
+        main('/placeholder_path/placeholder.pkl',
+             '/placeholder_path/default',33,0.97,1.,1,10,20,6,-3,'no','something')
