@@ -291,8 +291,6 @@ def lpc_cycle(m0,hits,amps,n_width,cycle,N_p,norm,x,y,z,event_num,
                     lpc_points[l+1]=m0
                     c=1
                     count=0
-    #Draw the LPC points plot
-    #plot_save.draw_plots(lpc_points,m_vec,angles,cycle,norm,x,y,z,event_num,save_fol)
     return lpc_points, m_vec
 
 #3D fitting using the parametric equation of a straight line
