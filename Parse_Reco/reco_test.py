@@ -22,9 +22,9 @@ def main(a_pickle='/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.
     parser = ap.ArgumentParser(description="Event reconstruction parameters")
     group1=parser.add_argument_group('Initial settings')
     group1.add_argument("--pickle",help="select the file to be opened",
-                        default='/Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl3.pkl')
+                        default='')
     group1.add_argument("--save_fol",help="select the save folder",
-                        default='/Users/alessandro/TesiMag/MURA_code/TrackReco/Parse_Reco/Plots/default')
+                        default='')
     group1.add_argument("--event",help="select event to be checked",type=int,default=33)
     group2=parser.add_argument_group('Amplitude cuts')
     group2.add_argument('--lower_cut',type=float,help="Lower amplitude cut",default=0.97)
