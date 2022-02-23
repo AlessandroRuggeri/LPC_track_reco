@@ -75,61 +75,32 @@ To start using the programs:
 ### Optional setup of grain_lpc_reco/
 It is convenient to set default paths in which to search for the .pkl files and create the save folder. 
 
-To set an initial folder for browsing the .pkl files, open `grain_lpc_reco/reco_gui.py` and, in the definition of `make_browse_window()` change:
+To set an initial folder for browsing the .pkl files, open `grain_lpc_reco/reco_gui.py` and, in the definition of `make_browse_window()` change the `initial_folder` value:
 ```
  sg.FileBrowse(key="-File-",font=font_corpus,initial_folder='/placeholder_path')]
 ```
-to the preferred path, for instance:
-```
-sg.FileBrowse(key="-File-",font=font_corpus,initial_folder='/valid_path')]
-```
+to the preferred path.
 An initial path for the save folder can be set in the definition of `main_gui()` by changing
-
 ```
 sg.FolderBrowse(key="-Fol-",font=font_corpus,initial_folder='/placeholder_save_folder')]
 ```
-in the initialisation of `lpc_layout` to the preferred path, e.g.:
-```
-sg.FolderBrowse(key="-Fol-",font=font_corpus,initial_folder='/valid_save_folder')]
-```
+to the preferred path.
 ### Recommended setup of Parse_reco/
 For the command line version it is recommended to set the default paths of the .pkl files and of the save folder.
-
-To set the default .pkl file path open `reco_parse.py` and change:
+To set the default .pkl file path open `reco_parse.py` and change the `default` value of the `--pickle` argument to the desired path:
 ```
-group1.add_argument("--pickle",help="select the file to be opened",default='/placeholder_path/placeholder.pkl')
+group1.add_argument("--pickle",help="select the file to be opened", default='/valid_path/valid_pickle.pkl')
 ```
-to the desired path, e.g.:
-```
-group1.add_argument("--pickle",help="select the file to be opened",		default='/valid_path/valid_pickle.pkl')
-```
-Then, to set the default save folder path change, just below:
-```
-group1.add_argument("--save_fol",help="select the save folder",default='/placeholder_save_folder')
-```
-to the desired path, e.g.:
+Then, to set the default save folder path change, just below, the `default` value of the `--save_fol` argument to the desired path::
 ```
 group1.add_argument("--save_fol",help="select the save folder",default='/valid_save_folder')
 ```
 ### Setup of reco_test in Parse_reco/
 In order to prime the battery of tests in `reco_test.py` it is necessary to change the placeholder default values of the `a_pickle` and `a_sf` arguments of `main` to valid paths in the `main` definition and in its calls in the test functions, e.g.:
 ```
-main(a_pickle='/placeholder_path/placeholder.pkl',a_sf='/placeholder_path',a_ev=33,a_lc=0.97,
-```
-to:
-```
 main(a_pickle='/valid_path/valid_pickle.pkl',a_sf='/valid_folder',a_ev=33,a_lc=0.97,
 ```
 and, in the test functions:
-```
-def test_valid_folder():
-    with pytest.raises(Exception):
-        print(" ")
-        print("test_valid_folder")
-        main('/placeholder_path/placeholder.pkl',
-             '/placeholder_path/default')
-```
-to, for instance:
 ```
 def test_valid_folder():
     with pytest.raises(Exception):
