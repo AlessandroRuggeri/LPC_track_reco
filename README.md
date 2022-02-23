@@ -8,7 +8,6 @@ A Python program for the reconstruction of events in the GRAIN detector with a L
 * [Setup](#setup)
 * [Usage](#usage)
 * [Room for Improvement](#room-for-improvement)
-* [Contact](#contact)
  * [References](#references)
 
 ## General Information
