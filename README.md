@@ -170,5 +170,7 @@ Features to be introduced next:
 
 ## References
 <a id="1">[1]</a> Gottesman, Stephen & Fenimore, E. (1989). *New family of binary arrays for coded aperture imaging*. Applied optics. 28. 4344-52. 10.1364/AO.28.004344. 
+
 <a id="2">[2]</a> Andreotti, M., Bernardini, P., Bersani, A. _et al._ *Coded masks for imaging of neutrino events.* _Eur. Phys. J. C_  81, 1011 (2021). 
+
 <a id="3">[3]</a>  J. J. Back, G. J. Barker, S. B. Boyd, J. Einbeck, M. Haigh, B. Morgan, B. Oakley, Y. A. Ramachers and D. Roythorne. *Implementation of a local principal curves algorithm for neutrino interaction reconstruction in a liquid argon volume.* Eur. Phys. J. C, 74 3 (2014) 2832
