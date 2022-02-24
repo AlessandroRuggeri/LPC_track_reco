@@ -23,7 +23,7 @@ The purpose of the programs in this repository is to provide a way to quickly pr
 ## Features
 The project, developed in Python 3.8, currently features:
 - In the `grain_lpc_reco` folder: a **GUI-based** version of the program, made using the *PySimpleGUI* library, which allows to intuitively process the events, changing files, events and parameters at runtime.
-- In the `Parse_Reco` folder: a **command line** version of the program with parsed parameters, made using the *argparse* library, which allows for a swifter processing of individual events. 
+- In the `grain_parse_reco` folder: a **command line** version of the program with parsed parameters, made using the *argparse* library, which allows for a swifter processing of individual events. 
 - The two versions share the same same algorithm for the event reconstruction and plotting, implementing:
 	- the 3D scatter plot of the event using Python's Matoplotlib library for the selected cuts in amplitude.
 	- the computation of the centre of mass of the event in a neighbourhood of a selected width.
@@ -31,7 +31,7 @@ The project, developed in Python 3.8, currently features:
 	- the straight line fitting of the curve of LPC mean points with the estimation of the start and endpoint of the track.
 	- plotting of the fitted LPC curves.
 	- logs of the processing parameters and of the C.O.M, LPC and fit computations.
-- A battery of tests for the parameter input and LPC functions implemented for the command line version in `Parse_Reco` using the `pytest` library.
+- A battery of tests for the parameter input and LPC functions implemented for the command line version in `grain_parse_reco` using the `pytest` library.
 	
 
 ## Dependencies
@@ -66,10 +66,26 @@ pip3 install pysimplegui
 The [argparse](https://docs.python.org/3/library/argparse.html) library is required for the command line parsing version. The **argparse** module is part of the Python standard library.
 
 ## Setup
+The folder structure of the repository is as follows:
+```
+-LPC_track_reco
+ ├── grain_parse_reco     # Command line version
+ │   └── reco_parse.py 	  # executable file
+ │   └── lpc_functions.py #LPC and C.O.M algorithms
+ │   └── plot_save.py 	  # functions for plotting
+ │   └── reco_test.py 	  # unit testing with pytest
+ │
+ ├── grain_lpc_reco 	  #GUI-based version
+ │   └── reco_gui.py 	  # executable file
+ │   └── lpc_functions.py #LPC and C.O.M algorithms
+ │   └── plot_save.py  	  # functions for plotting
+ │
+ └── README.md
+```
 To start using the programs:
 1. Clone this repository or download the folder containing the version that you need:
 	- `grain_lpc_reco/` contains the GUI-based version of the program.
-	- `Parse_reco/` contains the command line version.
+	- `grain_parse_reco/` contains the command line version.
 2. Download the [shared folder] containing the .pkl files with the events.
 3. Install the dependencies listed [above](#dependencies).
 ### Optional setup of grain_lpc_reco/
@@ -85,17 +101,17 @@ An initial path for the save folder can be set in the definition of `main_gui()`
 sg.FolderBrowse(key="-Fol-",font=font_corpus,initial_folder='/placeholder_save_folder')]
 ```
 to the preferred path.
-### Recommended setup of Parse_reco/
+### Recommended setup of grain_parse_reco/
 For the command line version it is recommended to set the default paths of the .pkl files and of the save folder.
 To set the default .pkl file path open `reco_parse.py` and change the `default` value of the `--pickle` argument to the desired path:
 ```python
 group1.add_argument("--pickle",help="select the file to be opened", default='/valid_path/valid_pickle.pkl')
 ```
-Then, to set the default save folder path change, just below, the `default` value of the `--save_fol` argument to the desired path::
+Then, to set the default save folder path change, just below, the `default` value of the `--save_fol` argument to the desired path:
 ```python
 group1.add_argument("--save_fol",help="select the save folder",default='/valid_save_folder')
 ```
-### Setup of reco_test in Parse_reco/
+### Setup of reco_test in grain_parse_reco/
 In order to prime the battery of tests in `reco_test.py` it is necessary to change the placeholder default values of the `a_pickle` and `a_sf` arguments of `main` to valid paths in the `main` definition and in its calls in the test functions, e.g.:
 ```python
 main(a_pickle='/valid_path/valid_pickle.pkl',a_sf='/valid_folder',a_ev=33,a_lc=0.97,
@@ -130,7 +146,7 @@ def test_valid_folder():
 	- click the **Exit** button to close the program.
 	- click the **Change File** button select another file and restart the execution.
 ### Command line version
-1. To start the command line version, move to your Python environment and execute `/Parse_Reco/reco_parse.py` from the command line or from the iPython shell, **parsing the parameters** as [argparse](https://docs.python.org/3/library/argparse.html) arguments.
+1. To start the command line version, move to your Python environment and execute `/grain_parse_reco/reco_parse.py` from the command line or from the iPython shell, **parsing the parameters** as [argparse](https://docs.python.org/3/library/argparse.html) arguments.
 	- The arguments are **optional**, so they can be called in any order and are not required. All have default values that can be modified in `reco_parse.py`.
 	- The scatterplot of the event is always shown.
 2. Whenever needed, run the program with the `--help` argparse option to get a list of the argument names and descriptions. You may also want to look at the [following section](#the-execution-parameters).
@@ -158,8 +174,8 @@ A brief guide to the execution parameters for the algorithm.
 	- The **neighbourhood width** (in cm) around each LPC point with which to compute the next one in the cycle.
 	- The **exclusion width** (in cm) around each LPC point whose voxels will be neglected when computing the starting point of cycles above the first.
 ### Testing
-A battery of tests has been written to test the response of the algorithms to various possible combinations of parameters. The tests are performed over a modified version of  `/Parse_Reco/reco_parse.py` using the [pytest](https://docs.pytest.org/en/6.2.x/index.html) library. As determining a *right* result for the computations is non-trivial, the test assert the raising of unwanted exceptions.
-To run the tests, in your Python environment, move to the `/Parse_Reco` folder and run from there
+A battery of tests has been written to test the response of the algorithms to various possible combinations of parameters. The tests are performed over a modified version of  `/grain_parse_reco/reco_parse.py` using the [pytest](https://docs.pytest.org/en/6.2.x/index.html) library. As determining a *right* result for the computations is non-trivial, the test assert the raising of unwanted exceptions.
+To run the tests, in your Python environment, move to the `/grain_parse_reco` folder and run from there
  ```console
  $ !pytest reco_test.py
  ```
@@ -176,7 +192,7 @@ Room for improvement of current features:
 Features to be introduced next:
 - Definition of criteria to determine the amplitude cuts algorithmically.
 - Finding of a way to identify artifacts.
-- Definition criteria to distinguish automatically *track events* from *blob events*.
+- Definition of criteria to distinguish automatically *track events* from *blob events*.
 
 ## References
 <a id="1">[1]</a> Gottesman, Stephen & Fenimore, E. (1989). *New family of binary arrays for coded aperture imaging*. Applied optics. 28. 4344-52. 10.1364/AO.28.004344. 
