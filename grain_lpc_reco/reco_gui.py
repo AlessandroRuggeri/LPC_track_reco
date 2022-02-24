@@ -27,7 +27,7 @@ def make_browse_window():
     browse_layout = [[sg.T("")], [sg.Text("Choose a file: ",font=font_corpus),
                                   sg.Input(font=font_corpus),
                                   sg.FileBrowse(key="-File-",font=font_corpus,initial_folder=
-                                                '')],
+                                                '/placeholder_path/placeholder.pkl')],
                      [sg.T("")],
                      [sg.Button("Open file",font=font_corpus),sg.Exit(font=font_corpus)]]
     return sg.Window("Browse Panel",browse_layout)
@@ -61,11 +61,11 @@ def main_gui():
                           [sg.Text("Save folder: ",font=font_corpus),
                            sg.Input(font=font_corpus),
                            sg.FolderBrowse(key="-Fol-",
-                                           font=font_corpus,initial_folder='')],
+                                           font=font_corpus,initial_folder='/placeholder_folder')],
                           [sg.T("")],
                           [sg.Text('Enter event',font=font_title)],
                           [sg.Combo(np.arange(in_event,fin_event+1),default_value=str(in_event),font=font_corpus,key='-IN0-')],
-                          [[sg.T("")],sg.Text('Enter dataset parameters',font=font_title)],
+                          [[sg.T("")],sg.Text('Enter amplitude cuts',font=font_title)],
                           [TextLabel('Lower amp. cut'),sg.Input('0.96',key='-IN5L-',justification='l',font=font_corpus,size=(5))],
                           [TextLabel('Upper amp. cut'),sg.Input('1.',key='-IN5U-',justification='l',font=font_corpus,size=(5))],
                           [[sg.T("")],sg.Button('Plot',font=font_corpus)],
