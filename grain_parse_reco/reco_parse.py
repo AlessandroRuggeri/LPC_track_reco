@@ -19,9 +19,9 @@ if  __name__ == "__main__":
     parser = ap.ArgumentParser(description="Event reconstruction parameters")
     group1=parser.add_argument_group('Initial settings')
     group1.add_argument("--pickle",help="select the file to be opened",
-                        default='')
+                        default='/placeholder_path/placeholder.pkl')
     group1.add_argument("--save_fol",help="select the save folder",
-                        default='')
+                        default='/placeholder_folder')
     group1.add_argument("--event",help="select event to be checked",type=int,default=33)
     group2=parser.add_argument_group('Amplitude cuts')
     group2.add_argument('--lower_cut',type=float,help="Lower amplitude cut",default=0.97)
@@ -33,7 +33,7 @@ if  __name__ == "__main__":
     group4.add_argument('--Cyc_num',type=int,help="Number of LPC cycles",default=1)
     group4.add_argument('--LPC_neigh_width',type=float,help="Voxel width for LPC computation",default=6)
     group4.add_argument('--excl_width',type=float,help="Excluded voxel width for new starting point",default=5)
-    group5=parser.add_argument_group('Confirms')
+    group5=parser.add_argument_group('Actions')
     group5.add_argument('--lpc_confirm',type=str,help="Compute the LPC? [y if yes]",default='n')
     group5.add_argument('--com_confirm',type=str,help="Compute the C.O.M? [y if yes]",default='n')
     group5.add_argument('--save_confirm',type=str,help="Save the parameters? [y if yes]",default='y')
@@ -149,5 +149,5 @@ if  __name__ == "__main__":
     
     print("++ Plotting ++")
     #call plt.show() to draw plots that won't close at the end
-    plot_save.show_mask()
+    plot_save.show_wrap()
     print("+++ Execution complete +++")

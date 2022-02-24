@@ -75,5 +75,5 @@ def save_results(file_sel,event_num,save_fol,c_frac_l,c_frac_u,CM_width,G_CM_wid
         print("Neglected closest {0} cm when repeating".format(n_neg),file=s)
         s.close()
 
-def show_mask():
+def show_wrap():
     plt.show()
