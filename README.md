@@ -86,7 +86,7 @@ To start using the programs:
 1. Clone this repository or download the folder containing the version that you need:
 	- `grain_lpc_reco/` contains the GUI-based version of the program.
 	- `grain_parse_reco/` contains the command line version.
-2. Download the [shared folder](https://liveunibo-my.sharepoint.com/:f:/g/personal/alessandro_ruggeri7_studio_unibo_it/EhtNqdxXtYRDrF76ys_nZl0BYQdkqbgdoIIQi_3MPancsg?e=itTuts) containing the .pkl files with the events.
+2. Download the [shared folder](https://liveunibo-my.sharepoint.com/:f:/g/personal/alessandro_ruggeri7_studio_unibo_it/EhtNqdxXtYRDrF76ys_nZl0BYQdkqbgdoIIQi_3MPancsg?e=itTuts) containing the .pkl files with the events, or just the needed event files.
 3. Install the dependencies listed [above](#dependencies).
 ### Optional setup of grain_lpc_reco/
 It is convenient to set default paths in which to search for the .pkl files and create the save folder. 
