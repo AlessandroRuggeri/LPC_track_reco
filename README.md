@@ -12,7 +12,7 @@ A Python program for the reconstruction of events in the GRAIN detector with a L
  * [References](#references)
 
 ## General Information
-The GRAIN sub-detector is set to complement the capabilities of the of the future DUNE experiment with its innovative use of UV imaging techniques in Liquid Argon.
+The GRAIN sub-detector is set to complement the capabilities of the of the future [DUNE](https://www.dunescience.org/) experiment with its innovative use of UV imaging techniques in Liquid Argon.
 One of such techniques makes use of Hadamard masks, patterned masks to be placed over the sensors adopted from X-ray astronomy and imaging [[1]](#1), allowing image reconstruction with an optimal depth of field [[2]](#2).
 
 The best option for extracting observables, namely positions and directions of particle tracks, from data that is often marred by reconstruction artefacts, are **Local Principal Curve** (LPC) algorithms .
@@ -86,7 +86,7 @@ To start using the programs:
 1. Clone this repository or download the folder containing the version that you need:
 	- `grain_lpc_reco/` contains the GUI-based version of the program.
 	- `grain_parse_reco/` contains the command line version.
-2. Download the [shared folder] containing the .pkl files with the events.
+2. Download the [shared folder](https://liveunibo-my.sharepoint.com/:f:/g/personal/alessandro_ruggeri7_studio_unibo_it/EhtNqdxXtYRDrF76ys_nZl0BYQdkqbgdoIIQi_3MPancsg?e=itTuts) containing the .pkl files with the events.
 3. Install the dependencies listed [above](#dependencies).
 ### Optional setup of grain_lpc_reco/
 It is convenient to set default paths in which to search for the .pkl files and create the save folder. 
@@ -161,7 +161,7 @@ def test_valid_folder():
 
 An example of an execution from command line requesting the C.O.M. computation of `event 5` in `3dreco.pkl0.pkl` with a lower amplitude cut at 96%.
 ```console 
-$ python reco_parse.py --pickle /Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl0.pkl --event 5 --lower_cut 0.97 --save_fol /Users/alessandro/TesiMag/MURA_code/TrackReco/Plots/ev_5 --lower_cut 0.96
+$ python reco_parse.py --pickle /Users/alessandro/TesiMag/MURA_code/TrackReco/Pickles/3dreco.pkl0.pkl --event 5 --lower_cut 0.96 --save_fol /Users/alessandro/TesiMag/MURA_code/TrackReco/Plots/ev_5
 ```
 ### The execution parameters 
 A brief guide to the execution parameters for the algorithm.
